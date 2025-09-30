@@ -112,14 +112,14 @@ impl BalancerExtractor {
         // Make real contract call to get pool tokens and balances
         let pool_tokens = client.get_balancer_pool_tokens(vault_address, pool_id).await?;
 
-        // Calculate total liquidity and mid price from real balances
-        let mut total_liquidity_raw = 0u128;
-        for balance in &pool_tokens.balances {
-            total_liquidity_raw += balance.as_u128();
+        // Calculate total liquidity from REAL balances using actual token decimals
+        let mut total_liquidity = 0.0;
+        for (idx, balance) in pool_tokens.balances.iter().enumerate() {
+            if let Some(decimals) = pool.token_decimals.get(idx) {
+                let balance_readable = balance.as_u128() as f64 / 10f64.powi(*decimals as i32);
+                total_liquidity += balance_readable;
+            }
         }
-
-        // Convert to human-readable (assuming 18 decimals for simplicity)
-        let total_liquidity = total_liquidity_raw as f64 / 1e18;
         
         // For weighted pools, calculate price from reserves and weights
         let mid_price = if pool.tokens.len() >= 2 && pool_tokens.balances.len() >= 2 {

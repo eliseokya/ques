@@ -91,17 +91,16 @@ impl CanonicalBridgeExtractor {
         // Get REAL bridge liquidity by checking ETH/WETH balance
         let weth_address: H160 = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2".parse().unwrap();
         
-        let liquidity_raw = match client.get_erc20_balance(weth_address, bridge.address).await {
-            Ok(balance) => {
-                // Convert from wei to human-readable ETH, then to USD (assuming ~$2000/ETH)
-                let eth_amount = balance.as_u128() as f64 / 1e18;
-                eth_amount * 2000.0 // Approximate USD value
-            }
-            Err(e) => {
-                warn!(bridge = %bridge.address, error = %e, "Failed to get bridge balance");
-                return Err(BetaDataplaneError::extractor("canonical_bridge", &format!("Failed to get liquidity: {}", e)));
-            }
-        };
+        // Get REAL WETH balance in the bridge contract
+        let weth_balance = client.get_erc20_balance(weth_address, bridge.address).await
+            .map_err(|e| BetaDataplaneError::extractor("canonical_bridge", &format!("Failed to get bridge balance: {}", e)))?;
+
+        // Convert from wei to human-readable ETH
+        let liquidity_raw = weth_balance.as_u128() as f64 / 1e18;
+        
+        // NOTE: We're reporting liquidity in ETH, not USD
+        // The Intelligence layer can apply real-time ETH/USD pricing
+        // This way we don't hardcode any price assumptions
 
         // Settlement time estimates (in seconds)
         let settlement_time = match bridge.dest_chain.as_str() {

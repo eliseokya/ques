@@ -39,6 +39,11 @@ impl EthereumRpcClient {
         Ok(block_number.as_u64())
     }
 
+    /// Get block by number
+    pub async fn get_block(&self, block_number: u64) -> Result<Option<Block<TxHash>>> {
+        self.client.get_block(block_number).await
+    }
+
     /// Get block with full transaction details
     pub async fn get_block_with_txs(&self, block_number: u64) -> Result<Option<Block<Transaction>>> {
         // TODO: Implement full transaction block retrieval
