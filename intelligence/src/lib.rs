@@ -28,6 +28,7 @@ pub use detectors::{TriangleArbDetector, DexArbDetector, DetectorManager};
 pub use ingestion::FeatureIngestionManager;
 pub use config::{IntelligenceConfig, DataplaneConnectionConfig, DetectionConfig};
 pub use simulator::TradeSimulator;
+pub use decision::{DecisionEngine, TradeDecision, PositionTracker};
 
 /// Version of the intelligence layer
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
