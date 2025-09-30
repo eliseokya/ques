@@ -7,6 +7,14 @@ pub mod traits;
 pub mod kafka;
 pub mod grpc;
 pub mod parquet;
+pub mod manager;
 
-// Re-export commonly used types (TODO: Implement in Phase 5)
-// pub use traits::{BetaDataFeed, BetaFeedConfig, BetaFeedMetrics, BetaFeedHealth};
+pub use traits::{
+    BetaDataFeed, BetaFeedConfig, BetaFeedHealth, BetaFeedMetrics,
+    CompressionAlgorithm, CompressionConfig, ConnectionStatus, FeedPerformance, FeedStatus,
+    RetryConfig,
+};
+pub use kafka::KafkaFeed;
+pub use grpc::GrpcFeed;
+pub use parquet::ParquetFeed;
+pub use manager::FeedManager;

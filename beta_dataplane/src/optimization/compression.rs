@@ -19,6 +19,9 @@ pub enum CompressionAlgorithm {
     /// Snappy compression (fast)
     Snappy,
     
+    /// Lz4 compression (very fast)
+    Lz4,
+    
     /// Zstd compression (balanced)
     Zstd,
 }
@@ -66,6 +69,7 @@ impl DataCompressor {
             CompressionAlgorithm::None => Ok(data.to_vec()),
             CompressionAlgorithm::Gzip => self.compress_gzip(data),
             CompressionAlgorithm::Snappy => self.compress_snappy(data),
+            CompressionAlgorithm::Lz4 => self.compress_lz4(data),
             CompressionAlgorithm::Zstd => self.compress_zstd(data),
         }
     }
@@ -76,6 +80,7 @@ impl DataCompressor {
             CompressionAlgorithm::None => Ok(data.to_vec()),
             CompressionAlgorithm::Gzip => self.decompress_gzip(data),
             CompressionAlgorithm::Snappy => self.decompress_snappy(data),
+            CompressionAlgorithm::Lz4 => self.decompress_lz4(data),
             CompressionAlgorithm::Zstd => self.decompress_zstd(data),
         }
     }
@@ -121,6 +126,20 @@ impl DataCompressor {
         Ok(data.to_vec())
     }
 
+    /// Compress with Lz4
+    fn compress_lz4(&self, data: &[u8]) -> Result<Vec<u8>> {
+        // TODO: Implement Lz4 compression when lz4 crate is added
+        debug!("Lz4 compression not yet implemented, using no compression");
+        Ok(data.to_vec())
+    }
+
+    /// Decompress with Lz4
+    fn decompress_lz4(&self, data: &[u8]) -> Result<Vec<u8>> {
+        // TODO: Implement Lz4 decompression
+        debug!("Lz4 decompression not yet implemented");
+        Ok(data.to_vec())
+    }
+
     /// Compress with Zstd
     fn compress_zstd(&self, data: &[u8]) -> Result<Vec<u8>> {
         // TODO: Implement Zstd compression when zstd crate is added
@@ -150,6 +169,7 @@ impl DataCompressor {
             CompressionAlgorithm::None => 1.0,
             CompressionAlgorithm::Gzip => 0.3, // ~70% reduction
             CompressionAlgorithm::Snappy => 0.5, // ~50% reduction
+            CompressionAlgorithm::Lz4 => 0.6, // ~40% reduction (very fast)
             CompressionAlgorithm::Zstd => 0.4, // ~60% reduction
         };
 
