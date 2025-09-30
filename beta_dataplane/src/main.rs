@@ -10,10 +10,22 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use qenus_beta_dataplane::{
     config::BetaDataplaneConfig,
-    providers::ApiKeyManager,
+    providers::{ApiKeyManager, EthereumRpcClient, ArbitrumRpcClient, OptimismRpcClient, BaseRpcClient},
+    extractors::{
+        BetaFeatureExtractor, ExtractionContext,
+        amm::{UniswapV3Extractor, CurveExtractor, BalancerExtractor},
+        gas::pricing::GasPricingExtractor,
+        bridges::canonical::CanonicalBridgeExtractor,
+        flash_loans::{aave_v3::AaveV3FlashLoanExtractor, balancer::BalancerFlashLoanExtractor},
+    },
+    feeds::FeedManager,
+    monitoring::MonitoringService,
+    optimization::{IntelligentCache, CacheStrategy, BatchProcessor, BatchStrategy},
     error::Result,
     Chain, OperationalMode, VERSION,
 };
+use std::sync::Arc;
+use std::time::Duration;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -280,47 +292,413 @@ async fn setup_shutdown_signal() {
 struct BetaDataplane {
     config: BetaDataplaneConfig,
     chains: Vec<Chain>,
+    providers: ChainProviders,
+    extractors: ChainExtractors,
+    feed_manager: Arc<FeedManager>,
+    monitoring: Arc<MonitoringService>,
+    cache: Arc<IntelligentCache<Vec<u8>>>,
+}
+
+/// RPC providers for each chain
+struct ChainProviders {
+    ethereum: Option<EthereumRpcClient>,
+    arbitrum: Option<ArbitrumRpcClient>,
+    optimism: Option<OptimismRpcClient>,
+    base: Option<BaseRpcClient>,
+}
+
+/// Feature extractors for each chain
+struct ChainExtractors {
+    uniswap_v3: Arc<UniswapV3Extractor>,
+    curve: Arc<CurveExtractor>,
+    balancer: Arc<BalancerExtractor>,
+    gas: Arc<GasPricingExtractor>,
+    bridges: Arc<CanonicalBridgeExtractor>,
+    aave_flash: Arc<AaveV3FlashLoanExtractor>,
+    balancer_flash: Arc<BalancerFlashLoanExtractor>,
 }
 
 impl BetaDataplane {
     /// Create a new beta dataplane instance
     async fn new(config: BetaDataplaneConfig, chains: Vec<Chain>) -> Result<Self> {
-        info!("Initializing beta dataplane");
+        info!("Initializing beta dataplane...");
+        
+        // Initialize providers for each chain
+        let providers = Self::initialize_providers(&config, &chains).await?;
+        
+        // Initialize extractors
+        let extractors = Self::initialize_extractors(&providers).await?;
+        
+        // Initialize feed manager
+        let feed_manager = Arc::new(Self::initialize_feeds(&config)?);
+        
+        // Initialize monitoring
+        let monitoring = Arc::new(Self::initialize_monitoring()?);
+        
+        // Initialize cache
+        let cache = Arc::new(IntelligentCache::new(
+            Duration::from_secs(60), // 60s TTL
+            10000, // 10k entries
+            CacheStrategy::LRU,
+        ));
+        
+        info!("✅ Cache initialized");
+        
+        info!("✅ Beta dataplane initialized successfully");
         
         Ok(Self {
             config,
             chains,
+            providers,
+            extractors,
+            feed_manager,
+            monitoring,
+            cache,
         })
     }
 
-    /// Run the beta dataplane
-    async fn run(self) -> Result<()> {
-        info!("Starting beta dataplane components...");
+    /// Initialize RPC providers for all chains
+    async fn initialize_providers(config: &BetaDataplaneConfig, chains: &[Chain]) -> Result<ChainProviders> {
+        info!("Initializing RPC providers...");
+        
+        let mut ethereum = None;
+        let mut arbitrum = None;
+        let mut optimism = None;
+        let mut base = None;
+        
+        for chain in chains {
+            let providers_for_chain = config.get_providers_for_chain(*chain);
+            
+            match chain {
+                Chain::Ethereum if !providers_for_chain.is_empty() => {
+                    info!("Initializing Ethereum provider with {} endpoints", providers_for_chain.len());
+                    ethereum = Some(EthereumRpcClient::new(providers_for_chain.clone()).await?);
+                }
+                Chain::Arbitrum if !providers_for_chain.is_empty() => {
+                    info!("Initializing Arbitrum provider with {} endpoints", providers_for_chain.len());
+                    arbitrum = Some(ArbitrumRpcClient::new(providers_for_chain.clone()).await?);
+                }
+                Chain::Optimism if !providers_for_chain.is_empty() => {
+                    info!("Initializing Optimism provider with {} endpoints", providers_for_chain.len());
+                    optimism = Some(OptimismRpcClient::new(providers_for_chain.clone()).await?);
+                }
+                Chain::Base if !providers_for_chain.is_empty() => {
+                    info!("Initializing Base provider with {} endpoints", providers_for_chain.len());
+                    base = Some(BaseRpcClient::new(providers_for_chain.clone()).await?);
+                }
+                _ => {}
+            }
+        }
+        
+        info!("✅ RPC providers initialized");
+        
+        Ok(ChainProviders {
+            ethereum,
+            arbitrum,
+            optimism,
+            base,
+        })
+    }
 
-        // TODO: Initialize and start all components in subsequent phases:
-        // Phase 2: Provider management
-        // Phase 3: Feature extractors  
-        // Phase 4: Optimization systems
-        // Phase 5: Data feeds
-        // Phase 6: Monitoring
+    /// Initialize all feature extractors
+    async fn initialize_extractors(providers: &ChainProviders) -> Result<ChainExtractors> {
+        info!("Initializing feature extractors...");
+        
+        use qenus_beta_dataplane::extractors::ExtractorConfig;
+        
+        let config = ExtractorConfig::default();
+        
+        // Create extractors with RPC clients
+        let mut uniswap_v3 = UniswapV3Extractor::new(config.clone());
+        let curve = CurveExtractor::new(config.clone());
+        let balancer = BalancerExtractor::new(config.clone());
+        let gas = GasPricingExtractor::new(config.clone());
+        let bridges = CanonicalBridgeExtractor::new(config.clone());
+        let aave_flash = AaveV3FlashLoanExtractor::new(config.clone());
+        let balancer_flash = BalancerFlashLoanExtractor::new(config.clone());
+        
+        // Set client for each extractor if Ethereum provider is available
+        if let Some(eth_client) = &providers.ethereum {
+            uniswap_v3.set_client(eth_client.clone());
+        }
+        
+        info!("✅ Feature extractors initialized");
+        
+        Ok(ChainExtractors {
+            uniswap_v3: Arc::new(uniswap_v3),
+            curve: Arc::new(curve),
+            balancer: Arc::new(balancer),
+            gas: Arc::new(gas),
+            bridges: Arc::new(bridges),
+            aave_flash: Arc::new(aave_flash),
+            balancer_flash: Arc::new(balancer_flash),
+        })
+    }
+
+    /// Initialize feed manager
+    fn initialize_feeds(config: &BetaDataplaneConfig) -> Result<FeedManager> {
+        info!("Initializing feed manager...");
+        
+        use qenus_beta_dataplane::feeds::BetaFeedConfig;
+        use std::path::PathBuf;
+        
+        let feed_config = BetaFeedConfig::default();
+        
+        let manager = FeedManager::new()
+            .with_kafka(
+                vec!["localhost:9092".to_string()],
+                "qenus.beta.features".to_string(),
+                feed_config.clone(),
+            )
+            .with_grpc(
+                "0.0.0.0".to_string(),
+                50053,
+                feed_config.clone(),
+            )
+            .with_parquet(
+                PathBuf::from("./data/beta-dataplane/parquet"),
+                "qenus_features".to_string(),
+                feed_config,
+            );
+        
+        info!("✅ Feed manager initialized");
+        Ok(manager)
+    }
+
+    /// Initialize monitoring service
+    fn initialize_monitoring() -> Result<MonitoringService> {
+        info!("Initializing monitoring...");
+        
+        use qenus_beta_dataplane::monitoring::{HealthChecker, MetricsRegistry, AlertManager};
+        
+        let health = HealthChecker::new(Duration::from_secs(30));
+        let metrics = MetricsRegistry::new(Duration::from_secs(15));
+        let alerts = AlertManager::new(1000);
+        
+        let monitoring = MonitoringService::new(health, metrics, alerts);
+        
+        info!("✅ Monitoring initialized");
+        Ok(monitoring)
+    }
+
+    /// Run the beta dataplane
+    async fn run(mut self) -> Result<()> {
+        info!("🚀 Starting beta dataplane components...");
+
+        // Start monitoring service
+        self.monitoring.start().await?;
+        info!("✅ Monitoring service started");
+
+        // Start feed manager (skip for now, will be started when feeds are ready)
+        info!("⏭️  Feed manager ready (will start when first features are extracted)");
 
         info!(
             chains = ?self.chains,
             mode = ?self.config.global.mode,
             dry_run = self.config.global.dry_run,
-            "Beta dataplane is running"
+            "🎯 Beta dataplane is RUNNING - extracting live on-chain data"
         );
 
-        // Keep running until shutdown
+        // Main extraction loop
+        let mut interval = tokio::time::interval(Duration::from_secs(3)); // Extract every 3 seconds
+        let mut block_counters: std::collections::HashMap<Chain, u64> = std::collections::HashMap::new();
+
         loop {
-            tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
-            
-            // TODO: Add actual processing logic here
-            // This is where we'll orchestrate:
-            // - Provider management
-            // - Feature extraction
-            // - Data publishing
-            // - Monitoring
+            interval.tick().await;
+
+            // Process each chain
+            for chain in &self.chains {
+                // Get current block number
+                let current_block = match self.get_current_block(*chain).await {
+                    Ok(block) => block,
+                    Err(e) => {
+                        warn!(chain = %chain, error = %e, "Failed to get current block");
+                        continue;
+                    }
+                };
+
+                // Check if we've already processed this block
+                let last_processed = block_counters.get(chain).copied().unwrap_or(0);
+                if current_block <= last_processed {
+                    continue; // Already processed this block
+                }
+
+                info!(
+                    chain = %chain,
+                    block = current_block,
+                    "Processing new block"
+                );
+
+                // Extract features from all extractors
+                self.extract_and_publish(*chain, current_block).await?;
+
+                // Update block counter
+                block_counters.insert(*chain, current_block);
+            }
         }
+    }
+
+    /// Get current block number for a chain
+    async fn get_current_block(&self, chain: Chain) -> Result<u64> {
+        match chain {
+            Chain::Ethereum => {
+                if let Some(client) = &self.providers.ethereum {
+                    client.get_current_block().await
+                } else {
+                    Err(qenus_beta_dataplane::BetaDataplaneError::internal("Ethereum provider not initialized"))
+                }
+            }
+            Chain::Arbitrum => {
+                if let Some(client) = &self.providers.arbitrum {
+                    client.get_current_block().await
+                } else {
+                    Err(qenus_beta_dataplane::BetaDataplaneError::internal("Arbitrum provider not initialized"))
+                }
+            }
+            Chain::Optimism => {
+                if let Some(client) = &self.providers.optimism {
+                    client.get_current_block().await
+                } else {
+                    Err(qenus_beta_dataplane::BetaDataplaneError::internal("Optimism provider not initialized"))
+                }
+            }
+            Chain::Base => {
+                if let Some(client) = &self.providers.base {
+                    client.get_current_block().await
+                } else {
+                    Err(qenus_beta_dataplane::BetaDataplaneError::internal("Base provider not initialized"))
+                }
+            }
+        }
+    }
+
+    /// Extract features from all extractors and publish them
+    async fn extract_and_publish(&self, chain: Chain, block_number: u64) -> Result<()> {
+        let context = ExtractionContext::new(
+            chain,
+            block_number,
+            format!("{}_provider", chain),
+        );
+
+        let mut all_features = Vec::new();
+
+        // Run Uniswap V3 extractor
+        if self.extractors.uniswap_v3.supports_chain(chain) {
+            match self.extractors.uniswap_v3.extract_for_block(chain, block_number, &context).await {
+                Ok(features) => {
+                    if !features.is_empty() {
+                        info!(extractor = "uniswap_v3", chain = %chain, features = features.len(), "Extracted");
+                        all_features.extend(features);
+                    }
+                }
+                Err(e) => warn!(extractor = "uniswap_v3", error = %e, "Extraction failed"),
+            }
+        }
+
+        // Run Curve extractor
+        if self.extractors.curve.supports_chain(chain) {
+            match self.extractors.curve.extract_for_block(chain, block_number, &context).await {
+                Ok(features) => {
+                    if !features.is_empty() {
+                        info!(extractor = "curve", chain = %chain, features = features.len(), "Extracted");
+                        all_features.extend(features);
+                    }
+                }
+                Err(e) => warn!(extractor = "curve", error = %e, "Extraction failed"),
+            }
+        }
+
+        // Run Balancer extractor
+        if self.extractors.balancer.supports_chain(chain) {
+            match self.extractors.balancer.extract_for_block(chain, block_number, &context).await {
+                Ok(features) => {
+                    if !features.is_empty() {
+                        info!(extractor = "balancer", chain = %chain, features = features.len(), "Extracted");
+                        all_features.extend(features);
+                    }
+                }
+                Err(e) => warn!(extractor = "balancer", error = %e, "Extraction failed"),
+            }
+        }
+
+        // Run Gas extractor
+        if self.extractors.gas.supports_chain(chain) {
+            match self.extractors.gas.extract_for_block(chain, block_number, &context).await {
+                Ok(features) => {
+                    if !features.is_empty() {
+                        info!(extractor = "gas", chain = %chain, features = features.len(), "Extracted");
+                        all_features.extend(features);
+                    }
+                }
+                Err(e) => warn!(extractor = "gas", error = %e, "Extraction failed"),
+            }
+        }
+
+        // Run Bridges extractor
+        if self.extractors.bridges.supports_chain(chain) {
+            match self.extractors.bridges.extract_for_block(chain, block_number, &context).await {
+                Ok(features) => {
+                    if !features.is_empty() {
+                        info!(extractor = "bridges", chain = %chain, features = features.len(), "Extracted");
+                        all_features.extend(features);
+                    }
+                }
+                Err(e) => warn!(extractor = "bridges", error = %e, "Extraction failed"),
+            }
+        }
+
+        // Run Aave flash loan extractor
+        if self.extractors.aave_flash.supports_chain(chain) {
+            match self.extractors.aave_flash.extract_for_block(chain, block_number, &context).await {
+                Ok(features) => {
+                    if !features.is_empty() {
+                        info!(extractor = "aave_flash", chain = %chain, features = features.len(), "Extracted");
+                        all_features.extend(features);
+                    }
+                }
+                Err(e) => warn!(extractor = "aave_flash", error = %e, "Extraction failed"),
+            }
+        }
+
+        // Run Balancer flash loan extractor
+        if self.extractors.balancer_flash.supports_chain(chain) {
+            match self.extractors.balancer_flash.extract_for_block(chain, block_number, &context).await {
+                Ok(features) => {
+                    if !features.is_empty() {
+                        info!(extractor = "balancer_flash", chain = %chain, features = features.len(), "Extracted");
+                        all_features.extend(features);
+                    }
+                }
+                Err(e) => warn!(extractor = "balancer_flash", error = %e, "Extraction failed"),
+            }
+        }
+
+        // Publish all features
+        if !all_features.is_empty() {
+            if !self.config.global.dry_run {
+                match self.feed_manager.publish_batch(all_features.clone()).await {
+                    Ok(_) => {
+                        info!(
+                            chain = %chain,
+                            block = block_number,
+                            total_features = all_features.len(),
+                            "✅ Published features to all feeds"
+                        );
+                    }
+                    Err(e) => {
+                        error!(error = %e, "Failed to publish features");
+                    }
+                }
+            } else {
+                info!(
+                    chain = %chain,
+                    block = block_number,
+                    features = all_features.len(),
+                    "DRY RUN: Would publish features"
+                );
+            }
+        }
+
+        Ok(())
     }
 }
