@@ -1,0 +1,44 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    environment: 'production'
+    service: 'qenus-beta-dataplane'
+
+# Alertmanager configuration (optional)
+# alerting:
+#   alertmanagers:
+#     - static_configs:
+#         - targets: ['alertmanager:9093']
+
+scrape_configs:
+  # Beta Dataplane Metrics
+  - job_name: 'beta-dataplane'
+    static_configs:
+      - targets: ['beta-dataplane:9092']
+        labels:
+          component: 'dataplane'
+    scrape_interval: 10s
+    scrape_timeout: 5s
+
+  # Prometheus Self-Monitoring
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+        labels:
+          component: 'monitoring'
+
+  # Kafka/Redpanda Metrics
+  - job_name: 'kafka'
+    static_configs:
+      - targets: ['kafka:9644']
+        labels:
+          component: 'streaming'
+    scrape_interval: 30s
+
+  # Redis Exporter (if using redis-exporter)
+  # - job_name: 'redis'
+  #   static_configs:
+  #     - targets: ['redis-exporter:9121']
+  #       labels:
+  #         component: 'cache'

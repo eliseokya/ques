@@ -1,0 +1,150 @@
+version: '3.8'
+
+services:
+  # Beta Dataplane Service
+  beta-dataplane:
+    build:
+      context: ..
+      dockerfile: beta_dataplane/Dockerfile
+    container_name: qenus-beta-dataplane
+    restart: unless-stopped
+    env_file:
+      - config/.env
+    environment:
+      - RUST_LOG=info
+      - OPERATIONAL_MODE=production
+    ports:
+      - "8080:8080"   # Health checks
+      - "9092:9092"   # Prometheus metrics
+      - "50053:50053" # gRPC API
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - ./config:/app/config:ro
+    depends_on:
+      - kafka
+      - redis
+    networks:
+      - qenus-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 40s
+
+  # Kafka/Redpanda for real-time streaming
+  kafka:
+    image: docker.redpanda.com/redpandadata/redpanda:latest
+    container_name: qenus-kafka
+    restart: unless-stopped
+    command:
+      - redpanda
+      - start
+      - --smp 1
+      - --memory 1G
+      - --reserve-memory 0M
+      - --overprovisioned
+      - --node-id 0
+      - --kafka-addr PLAINTEXT://0.0.0.0:29092,OUTSIDE://0.0.0.0:9092
+      - --advertise-kafka-addr PLAINTEXT://kafka:29092,OUTSIDE://localhost:9092
+    ports:
+      - "9092:9092"
+      - "9644:9644"  # Admin API
+    volumes:
+      - kafka-data:/var/lib/redpanda/data
+    networks:
+      - qenus-network
+    healthcheck:
+      test: ["CMD-SHELL", "rpk cluster health | grep 'Healthy:.*true' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  # Redis for caching
+  redis:
+    image: redis:7-alpine
+    container_name: qenus-redis
+    restart: unless-stopped
+    command: redis-server --maxmemory 512mb --maxmemory-policy allkeys-lru
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - qenus-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  # Prometheus for metrics collection
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: qenus-prometheus
+    restart: unless-stopped
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=30d'
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./docker/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    networks:
+      - qenus-network
+    depends_on:
+      - beta-dataplane
+
+  # Grafana for visualization
+  grafana:
+    image: grafana/grafana:latest
+    container_name: qenus-grafana
+    restart: unless-stopped
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=qenus_admin_change_me
+      - GF_USERS_ALLOW_SIGN_UP=false
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./docker/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./docker/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+    networks:
+      - qenus-network
+    depends_on:
+      - prometheus
+
+  # PostgreSQL for state persistence (optional)
+  postgres:
+    image: postgres:15-alpine
+    container_name: qenus-postgres
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB=qenus
+      - POSTGRES_USER=qenus
+      - POSTGRES_PASSWORD=change_me_in_production
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - qenus-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U qenus"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+volumes:
+  kafka-data:
+  redis-data:
+  prometheus-data:
+  grafana-data:
+  postgres-data:
+
+networks:
+  qenus-network:
+    driver: bridge

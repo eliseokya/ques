@@ -1,0 +1,178 @@
+version: '3.8'
+
+# Production deployment configuration
+# Use with: docker-compose -f docker-compose.prod.yml up -d
+
+services:
+  # Beta Dataplane Service (Production)
+  beta-dataplane:
+    image: ${DOCKER_REGISTRY:-ghcr.io}/qenus/beta-dataplane:${VERSION:-latest}
+    container_name: qenus-beta-dataplane-prod
+    restart: always
+    env_file:
+      - config/.env.production
+    environment:
+      - RUST_LOG=info
+      - OPERATIONAL_MODE=production
+      - ENABLE_METRICS=true
+      - ENABLE_HEALTH_CHECKS=true
+    ports:
+      - "8080:8080"   # Health checks (internal only)
+      - "50053:50053" # gRPC API
+    volumes:
+      - /data/qenus/beta-dataplane:/app/data
+      - /logs/qenus/beta-dataplane:/app/logs
+      - ./config/beta-dataplane.prod.toml:/app/config/beta-dataplane.toml:ro
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 4G
+        reservations:
+          cpus: '2'
+          memory: 2G
+    networks:
+      - qenus-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "5"
+
+  # Kafka (Production - Clustered)
+  kafka:
+    image: docker.redpanda.com/redpandadata/redpanda:latest
+    container_name: qenus-kafka-prod
+    restart: always
+    command:
+      - redpanda
+      - start
+      - --smp 2
+      - --memory 2G
+      - --reserve-memory 512M
+      - --overprovisioned
+      - --node-id 0
+      - --kafka-addr PLAINTEXT://0.0.0.0:29092,OUTSIDE://0.0.0.0:9092
+      - --advertise-kafka-addr PLAINTEXT://kafka:29092,OUTSIDE://localhost:9092
+      - --pandaproxy-addr 0.0.0.0:8082
+      - --advertise-pandaproxy-addr localhost:8082
+    ports:
+      - "9092:9092"
+      - "9644:9644"
+      - "8082:8082"
+    volumes:
+      - /data/qenus/kafka:/var/lib/redpanda/data
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '1'
+          memory: 1G
+    networks:
+      - qenus-network
+
+  # Redis (Production)
+  redis:
+    image: redis:7-alpine
+    container_name: qenus-redis-prod
+    restart: always
+    command: >
+      redis-server
+      --maxmemory 1gb
+      --maxmemory-policy allkeys-lru
+      --save 60 1000
+      --appendonly yes
+    ports:
+      - "6379:6379"
+    volumes:
+      - /data/qenus/redis:/data
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+    networks:
+      - qenus-network
+
+  # Prometheus (Production)
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: qenus-prometheus-prod
+    restart: always
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=90d'
+      - '--web.enable-lifecycle'
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./docker/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - /data/qenus/prometheus:/prometheus
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 2G
+    networks:
+      - qenus-network
+
+  # Grafana (Production)
+  grafana:
+    image: grafana/grafana:latest
+    container_name: qenus-grafana-prod
+    restart: always
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD}
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_SERVER_ROOT_URL=https://grafana.yourdomain.com
+      - GF_INSTALL_PLUGINS=redis-datasource
+    ports:
+      - "3000:3000"
+    volumes:
+      - /data/qenus/grafana:/var/lib/grafana
+      - ./docker/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./docker/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+    networks:
+      - qenus-network
+
+  # PostgreSQL (Production)
+  postgres:
+    image: postgres:15-alpine
+    container_name: qenus-postgres-prod
+    restart: always
+    environment:
+      - POSTGRES_DB=qenus
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_INITDB_ARGS="-E UTF8"
+    ports:
+      - "5432:5432"
+    volumes:
+      - /data/qenus/postgres:/var/lib/postgresql/data
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+    networks:
+      - qenus-network
+    command: >
+      postgres
+      -c shared_buffers=256MB
+      -c effective_cache_size=1GB
+      -c max_connections=100
+
+networks:
+  qenus-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16

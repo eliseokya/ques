@@ -1,0 +1,62 @@
+# Build artifacts
+target/
+**/*.rs.bk
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Environment and secrets
+.env
+*.env
+**/.env
+config/.env*
+!config/environment.example
+
+# Git
+.git/
+.gitignore
+
+# Documentation
+docs/
+*.md
+!README.md
+
+# Tests
+tests/
+fixtures/
+
+# Logs
+logs/
+*.log
+
+# Data
+data/
+archives/
+*.parquet
+
+# Temporary
+tmp/
+temp/
+*.tmp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Node modules (if any)
+node_modules/
+
+# Python (if any)
+__pycache__/
+*.pyc
+
+# Benchmarks
+criterion/
+flamegraph*.svg
+
+# Cache
+.cache/
+*.cache
