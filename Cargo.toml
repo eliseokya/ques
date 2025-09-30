@@ -2,7 +2,8 @@
 members = [
     "dataplane",
     "dataplane/reth_fork",
-    "beta_dataplane"
+    "beta_dataplane",
+    "intelligence"
 ]
 resolver = "2"
 

@@ -1,0 +1,78 @@
+[package]
+name = "qenus-intelligence"
+version = "0.1.0"
+edition = "2021"
+authors = ["Qenus Team"]
+description = "Intelligence layer for Qenus - arbitrage opportunity detection and trade intent generation"
+
+[dependencies]
+# Async runtime
+tokio = { version = "1.35", features = ["full"] }
+async-trait = "0.1"
+futures = "0.3"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+serde_yaml = "0.9"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+
+# Error handling
+thiserror = "1.0"
+anyhow = "1.0"
+
+# Time handling
+chrono = { version = "0.4", features = ["serde"] }
+
+# UUID generation
+uuid = { version = "1.6", features = ["v4", "serde"] }
+
+# Kafka consumer (for dataplane features)
+# rdkafka = { version = "0.36", features = ["cmake-build", "ssl", "gssapi", "libz", "zstd"] }
+# Note: Commented out for initial development - will use direct feed integration instead
+
+# gRPC client (for dataplane queries)
+tonic = "0.11"
+prost = "0.12"
+
+# Database (for state persistence)
+sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "postgres", "chrono", "uuid"] }
+
+# Redis (for fast state access)
+redis = { version = "0.24", features = ["tokio-comp", "connection-manager"] }
+
+# Configuration
+config = "0.14"
+
+# Math and statistics
+num-traits = "0.2"
+num-bigint = "0.4"
+statrs = "0.16" # Statistical distributions
+
+# Concurrency
+dashmap = "5.5"
+parking_lot = "0.12"
+crossbeam = "0.8"
+
+# CLI
+clap = { version = "4.4", features = ["derive"] }
+
+# Parent dataplane types
+qenus-dataplane = { path = "../dataplane" }
+
+[dev-dependencies]
+tokio-test = "0.4"
+mockall = "0.12"
+proptest = "1.4"
+
+[[bin]]
+name = "intelligence"
+path = "src/main.rs"
+
+[lib]
+name = "qenus_intelligence"
+path = "src/lib.rs"
+
