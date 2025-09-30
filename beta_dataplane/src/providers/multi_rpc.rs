@@ -335,6 +335,15 @@ impl MultiRpcClient {
         }).await
     }
 
+    /// Get current gas price
+    pub async fn get_gas_price(&self) -> Result<ethers::types::U256> {
+        self.execute_with_failover(|client| {
+            Box::pin(async move {
+                client.get_gas_price().await
+            })
+        }).await
+    }
+
     /// Get logs with filter
     pub async fn get_logs(&self, filter: &Filter) -> Result<Vec<Log>> {
         self.execute_with_failover(|client| {

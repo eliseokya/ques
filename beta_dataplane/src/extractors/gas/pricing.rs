@@ -19,7 +19,7 @@ use qenus_dataplane::{
 use crate::{
     extractors::traits::{BetaFeatureExtractor, ExtractionContext, ExtractorConfig},
     providers::EthereumRpcClient,
-    Chain, Result,
+    Chain, Result, BetaDataplaneError,
 };
 
 /// Gas pricing extractor
@@ -52,30 +52,36 @@ impl GasPricingExtractor {
     async fn extract_gas_pricing(&mut self, chain: Chain, block_number: u64) -> Result<GasFeature> {
         info!(chain = %chain, block = block_number, "Extracting gas pricing");
 
-        // Simulate gas data (in production, would use eth_getBlockByNumber, eth_feeHistory, etc.)
-        let (base_fee, priority_fee, gas_used, gas_limit) = match chain {
-            Chain::Ethereum => {
-                // Ethereum mainnet typical values
-                (25.0, 2.0, 12_000_000, 30_000_000)
-            }
-            Chain::Arbitrum => {
-                // Arbitrum has much lower gas prices
-                (0.1, 0.01, 10_000_000, 32_000_000)
-            }
-            Chain::Optimism => {
-                // Optimism similar to Arbitrum
-                (0.001, 0.0001, 10_000_000, 30_000_000)
-            }
-            Chain::Base => {
-                // Base similar to Optimism
-                (0.001, 0.0001, 8_000_000, 30_000_000)
+        let client = self.client.as_ref()
+            .ok_or_else(|| BetaDataplaneError::internal("RPC client not set"))?;
+
+        // Get real gas price info
+        let gas_info = match client.get_gas_price_info().await {
+            Ok(info) => info,
+            Err(e) => {
+                warn!(error = %e, "Failed to get gas price info, using defaults");
+                // Fallback to chain-specific defaults
+                let (base, priority) = match chain {
+                    Chain::Ethereum => (25.0, 2.0),
+                    Chain::Arbitrum => (0.1, 0.01),
+                    Chain::Optimism => (0.001, 0.0001),
+                    Chain::Base => (0.001, 0.0001),
+                };
+                crate::providers::ethereum::GasPriceInfo {
+                    gas_price: ethers::types::U256::from((base * 1e9) as u64),
+                    base_fee: Some(ethers::types::U256::from((base * 1e9) as u64)),
+                    priority_fee: Some(ethers::types::U256::from((priority * 1e9) as u64)),
+                }
             }
         };
 
-        // Add some variance for realism
-        let block_variance = (block_number % 10) as f64;
-        let base_fee_adjusted = base_fee + (block_variance - 5.0) * 0.5;
-        let priority_fee_adjusted = priority_fee + (block_variance - 5.0) * 0.1;
+        // Convert from wei to gwei
+        let base_fee_adjusted = gas_info.base_fee
+            .map(|bf| bf.as_u128() as f64 / 1e9)
+            .unwrap_or(20.0);
+        let priority_fee_adjusted = gas_info.priority_fee
+            .map(|pf| pf.as_u128() as f64 / 1e9)
+            .unwrap_or(2.0);
 
         // Track recent values for percentiles
         self.recent_base_fees.push(base_fee_adjusted);
@@ -89,8 +95,9 @@ impl GasPricingExtractor {
             self.recent_priority_fees.remove(0);
         }
 
-        // Calculate gas used ratio
-        let gas_used_ratio = gas_used as f64 / gas_limit as f64;
+        // Estimate gas used ratio (would come from actual block data)
+        // For now, use a reasonable estimate
+        let gas_used_ratio = 0.5; // Assume blocks are ~50% full
 
         // Estimate next base fee (simplified EIP-1559 calculation)
         let next_base_fee_estimate = if gas_used_ratio > 0.5 {

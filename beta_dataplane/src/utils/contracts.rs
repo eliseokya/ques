@@ -88,6 +88,93 @@ pub static ERC20_ABI: Lazy<Abi> = Lazy::new(|| {
     .expect("Valid ERC20 ABI")
 });
 
+/// Curve Pool contract ABI
+pub static CURVE_POOL_ABI: Lazy<Abi> = Lazy::new(|| {
+    serde_json::from_value(json!([
+        {
+            "name": "get_virtual_price",
+            "outputs": [{"type": "uint256", "name": ""}],
+            "inputs": [],
+            "stateMutability": "view",
+            "type": "function"
+        },
+        {
+            "name": "balances",
+            "outputs": [{"type": "uint256", "name": ""}],
+            "inputs": [{"type": "uint256", "name": "i"}],
+            "stateMutability": "view",
+            "type": "function"
+        },
+        {
+            "name": "coins",
+            "outputs": [{"type": "address", "name": ""}],
+            "inputs": [{"type": "uint256", "name": "i"}],
+            "stateMutability": "view",
+            "type": "function"
+        },
+        {
+            "name": "get_dy",
+            "outputs": [{"type": "uint256", "name": ""}],
+            "inputs": [
+                {"type": "int128", "name": "i"},
+                {"type": "int128", "name": "j"},
+                {"type": "uint256", "name": "dx"}
+            ],
+            "stateMutability": "view",
+            "type": "function"
+        }
+    ]))
+    .expect("Valid Curve Pool ABI")
+});
+
+/// Balancer Vault ABI
+pub static BALANCER_VAULT_ABI: Lazy<Abi> = Lazy::new(|| {
+    serde_json::from_value(json!([
+        {
+            "name": "getPoolTokens",
+            "outputs": [
+                {"type": "address[]", "name": "tokens"},
+                {"type": "uint256[]", "name": "balances"},
+                {"type": "uint256", "name": "lastChangeBlock"}
+            ],
+            "inputs": [{"type": "bytes32", "name": "poolId"}],
+            "stateMutability": "view",
+            "type": "function"
+        }
+    ]))
+    .expect("Valid Balancer Vault ABI")
+});
+
+/// Aave V3 Pool ABI
+pub static AAVE_V3_POOL_ABI: Lazy<Abi> = Lazy::new(|| {
+    serde_json::from_value(json!([
+        {
+            "name": "getReserveData",
+            "outputs": [
+                {"type": "uint256", "name": "configuration"},
+                {"type": "uint128", "name": "liquidityIndex"},
+                {"type": "uint128", "name": "currentLiquidityRate"},
+                {"type": "uint128", "name": "variableBorrowIndex"},
+                {"type": "uint128", "name": "currentVariableBorrowRate"},
+                {"type": "uint128", "name": "currentStableBorrowRate"},
+                {"type": "uint40", "name": "lastUpdateTimestamp"},
+                {"type": "uint16", "name": "id"},
+                {"type": "address", "name": "aTokenAddress"},
+                {"type": "address", "name": "stableDebtTokenAddress"},
+                {"type": "address", "name": "variableDebtTokenAddress"},
+                {"type": "address", "name": "interestRateStrategyAddress"},
+                {"type": "uint128", "name": "accruedToTreasury"},
+                {"type": "uint128", "name": "unbacked"},
+                {"type": "uint128", "name": "isolationModeTotalDebt"}
+            ],
+            "inputs": [{"type": "address", "name": "asset"}],
+            "stateMutability": "view",
+            "type": "function"
+        }
+    ]))
+    .expect("Valid Aave V3 Pool ABI")
+});
+
 /// Contract registry for known contracts
 pub struct ContractRegistry {
     // Contract addresses and metadata
@@ -298,6 +385,147 @@ impl AbiManager {
             _ => Err(BetaDataplaneError::internal("Invalid symbol type")),
         }
     }
+
+    // === Curve Contract Functions ===
+
+    /// Encode get_virtual_price() call for Curve
+    pub fn encode_curve_virtual_price_call() -> Result<Bytes> {
+        Self::encode_function_call(&CURVE_POOL_ABI, "get_virtual_price", &[])
+    }
+
+    /// Decode get_virtual_price() output
+    pub fn decode_curve_virtual_price_output(output: &[u8]) -> Result<U256> {
+        let tokens = Self::decode_function_output(&CURVE_POOL_ABI, "get_virtual_price", output)?;
+
+        if tokens.len() != 1 {
+            return Err(BetaDataplaneError::internal("Invalid virtual_price output length"));
+        }
+
+        match &tokens[0] {
+            Token::Uint(val) => Ok(*val),
+            _ => Err(BetaDataplaneError::internal("Invalid virtual_price type")),
+        }
+    }
+
+    /// Encode balances(i) call for Curve
+    pub fn encode_curve_balances_call(index: u64) -> Result<Bytes> {
+        Self::encode_function_call(&CURVE_POOL_ABI, "balances", &[Token::Uint(U256::from(index))])
+    }
+
+    /// Decode balances() output
+    pub fn decode_curve_balances_output(output: &[u8]) -> Result<U256> {
+        let tokens = Self::decode_function_output(&CURVE_POOL_ABI, "balances", output)?;
+
+        if tokens.len() != 1 {
+            return Err(BetaDataplaneError::internal("Invalid balances output length"));
+        }
+
+        match &tokens[0] {
+            Token::Uint(val) => Ok(*val),
+            _ => Err(BetaDataplaneError::internal("Invalid balances type")),
+        }
+    }
+
+    /// Encode coins(i) call for Curve
+    pub fn encode_curve_coins_call(index: u64) -> Result<Bytes> {
+        Self::encode_function_call(&CURVE_POOL_ABI, "coins", &[Token::Uint(U256::from(index))])
+    }
+
+    /// Decode coins() output
+    pub fn decode_curve_coins_output(output: &[u8]) -> Result<H160> {
+        let tokens = Self::decode_function_output(&CURVE_POOL_ABI, "coins", output)?;
+
+        if tokens.len() != 1 {
+            return Err(BetaDataplaneError::internal("Invalid coins output length"));
+        }
+
+        match &tokens[0] {
+            Token::Address(val) => Ok(*val),
+            _ => Err(BetaDataplaneError::internal("Invalid coins type")),
+        }
+    }
+
+    // === Balancer Contract Functions ===
+
+    /// Encode getPoolTokens(poolId) call for Balancer
+    pub fn encode_balancer_pool_tokens_call(pool_id: [u8; 32]) -> Result<Bytes> {
+        Self::encode_function_call(&BALANCER_VAULT_ABI, "getPoolTokens", &[Token::FixedBytes(pool_id.to_vec())])
+    }
+
+    /// Decode getPoolTokens() output
+    pub fn decode_balancer_pool_tokens_output(output: &[u8]) -> Result<BalancerPoolTokens> {
+        let tokens = Self::decode_function_output(&BALANCER_VAULT_ABI, "getPoolTokens", output)?;
+
+        if tokens.len() != 3 {
+            return Err(BetaDataplaneError::internal("Invalid getPoolTokens output length"));
+        }
+
+        let token_addresses = match &tokens[0] {
+            Token::Array(arr) => {
+                arr.iter()
+                    .map(|t| match t {
+                        Token::Address(addr) => Ok(*addr),
+                        _ => Err(BetaDataplaneError::internal("Invalid token address type")),
+                    })
+                    .collect::<Result<Vec<_>>>()?
+            }
+            _ => return Err(BetaDataplaneError::internal("Invalid tokens type")),
+        };
+
+        let balances = match &tokens[1] {
+            Token::Array(arr) => {
+                arr.iter()
+                    .map(|t| match t {
+                        Token::Uint(val) => Ok(*val),
+                        _ => Err(BetaDataplaneError::internal("Invalid balance type")),
+                    })
+                    .collect::<Result<Vec<_>>>()?
+            }
+            _ => return Err(BetaDataplaneError::internal("Invalid balances type")),
+        };
+
+        let last_change_block = match &tokens[2] {
+            Token::Uint(val) => val.as_u64(),
+            _ => return Err(BetaDataplaneError::internal("Invalid lastChangeBlock type")),
+        };
+
+        Ok(BalancerPoolTokens {
+            tokens: token_addresses,
+            balances,
+            last_change_block,
+        })
+    }
+
+    // === Aave V3 Contract Functions ===
+
+    /// Encode getReserveData(asset) call for Aave V3
+    pub fn encode_aave_reserve_data_call(asset: H160) -> Result<Bytes> {
+        Self::encode_function_call(&AAVE_V3_POOL_ABI, "getReserveData", &[Token::Address(asset)])
+    }
+
+    /// Decode getReserveData() output
+    pub fn decode_aave_reserve_data_output(output: &[u8]) -> Result<AaveReserveData> {
+        let tokens = Self::decode_function_output(&AAVE_V3_POOL_ABI, "getReserveData", output)?;
+
+        if tokens.len() != 15 {
+            return Err(BetaDataplaneError::internal("Invalid getReserveData output length"));
+        }
+
+        Ok(AaveReserveData {
+            configuration: match &tokens[0] {
+                Token::Uint(val) => *val,
+                _ => return Err(BetaDataplaneError::internal("Invalid configuration type")),
+            },
+            liquidity_index: match &tokens[1] {
+                Token::Uint(val) => *val,
+                _ => return Err(BetaDataplaneError::internal("Invalid liquidityIndex type")),
+            },
+            a_token_address: match &tokens[8] {
+                Token::Address(val) => *val,
+                _ => return Err(BetaDataplaneError::internal("Invalid aTokenAddress type")),
+            },
+        })
+    }
 }
 
 /// Uniswap V3 slot0 data
@@ -310,4 +538,20 @@ pub struct UniswapV3Slot0 {
     pub observation_cardinality_next: u16,
     pub fee_protocol: u8,
     pub unlocked: bool,
+}
+
+/// Balancer pool tokens data
+#[derive(Debug, Clone)]
+pub struct BalancerPoolTokens {
+    pub tokens: Vec<H160>,
+    pub balances: Vec<U256>,
+    pub last_change_block: u64,
+}
+
+/// Aave V3 reserve data
+#[derive(Debug, Clone)]
+pub struct AaveReserveData {
+    pub configuration: U256,
+    pub liquidity_index: U256,
+    pub a_token_address: H160,
 }

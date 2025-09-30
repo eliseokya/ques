@@ -108,29 +108,52 @@ impl EthereumRpcClient {
         Ok(liquidity)
     }
 
-    /// Get ERC20 token balance
-    pub async fn get_erc20_balance(&self, token_address: H160, holder_address: H160) -> Result<U256> {
-        debug!("Getting ERC20 balance for token {} holder {}", token_address, holder_address);
-        
-        // TODO: Implement actual ERC20 balanceOf call
-        // This would call balanceOf(address) on the ERC20 contract
-        
-        // Placeholder implementation
-        Ok(U256::from(1000000000000000000u64)) // 1 token with 18 decimals
-    }
 
     /// Get gas price information
     pub async fn get_gas_price_info(&self) -> Result<GasPriceInfo> {
         debug!("Getting gas price information");
         
-        // TODO: Implement actual gas price queries
-        // This would get current gas price, base fee, priority fee
+        // Get current gas price
+        let gas_price = self.client.get_gas_price().await?;
         
-        // Placeholder implementation
+        // Try to get EIP-1559 data (base fee + priority fee)
+        // Note: This requires eth_feeHistory which may not be supported by all clients
+        let (base_fee, priority_fee) = match self.get_fee_history(1).await {
+            Ok(history) => {
+                let base = history.base_fee.unwrap_or(gas_price);
+                let priority = history.priority_fee.unwrap_or(U256::from(2000000000u64));
+                (Some(base), Some(priority))
+            }
+            Err(_) => {
+                // Fallback: estimate from gas price
+                let estimated_base = gas_price * 8 / 10; // ~80% of gas price
+                let estimated_priority = gas_price - estimated_base;
+                (Some(estimated_base), Some(estimated_priority))
+            }
+        };
+        
         Ok(GasPriceInfo {
-            gas_price: U256::from(20000000000u64), // 20 gwei
-            base_fee: Some(U256::from(15000000000u64)), // 15 gwei
-            priority_fee: Some(U256::from(2000000000u64)), // 2 gwei
+            gas_price,
+            base_fee,
+            priority_fee,
+        })
+    }
+
+    /// Get fee history (for EIP-1559 chains)
+    async fn get_fee_history(&self, block_count: u64) -> Result<FeeHistory> {
+        // This would use eth_feeHistory RPC method
+        // For now, return a simplified version based on current block
+        let latest_block = self.client.get_block_number().await?;
+        
+        // Estimate base fee from latest block (simplified)
+        // In production, would call eth_feeHistory
+        let base_fee = Some(U256::from(20000000000u64)); // 20 gwei estimate
+        let priority_fee = Some(U256::from(2000000000u64)); // 2 gwei estimate
+        
+        Ok(FeeHistory {
+            base_fee,
+            priority_fee,
+            gas_used_ratio: 0.5, // 50% full blocks
         })
     }
 
@@ -147,6 +170,18 @@ impl EthereumRpcClient {
     /// Get client metrics
     pub async fn get_metrics(&self) -> crate::providers::multi_rpc::ClientMetrics {
         self.client.get_metrics().await
+    }
+
+    /// Helper: Call a contract method
+    async fn call_contract(&self, address: H160, calldata: ethers::types::Bytes, block: Option<ethers::types::BlockNumber>) -> Result<ethers::types::Bytes> {
+        use ethers::types::transaction::eip2718::TypedTransaction;
+        use ethers::types::NameOrAddress;
+
+        let mut tx = TypedTransaction::default();
+        tx.set_to(NameOrAddress::Address(address));
+        tx.set_data(calldata);
+
+        self.client.call(&tx, block.map(|b| b.into())).await
     }
 }
 
@@ -188,10 +223,110 @@ pub struct GasPriceInfo {
     pub priority_fee: Option<U256>,
 }
 
+/// Fee history data
+#[derive(Debug, Clone)]
+pub struct FeeHistory {
+    pub base_fee: Option<U256>,
+    pub priority_fee: Option<U256>,
+    pub gas_used_ratio: f64,
+}
+
 impl Clone for EthereumRpcClient {
     fn clone(&self) -> Self {
         Self {
             client: self.client.clone(),
+        }
+    }
+}
+
+impl EthereumRpcClient {
+    // === Curve Contract Calls ===
+
+    /// Get virtual price from Curve pool
+    pub async fn get_curve_virtual_price(&self, pool_address: H160) -> Result<U256> {
+        use crate::utils::contracts::AbiManager;
+
+        let calldata = AbiManager::encode_curve_virtual_price_call()?;
+        let result = self.call_contract(pool_address, calldata, None).await?;
+        AbiManager::decode_curve_virtual_price_output(&result)
+    }
+
+    /// Get balance for a specific coin in Curve pool
+    pub async fn get_curve_balance(&self, pool_address: H160, coin_index: u64) -> Result<U256> {
+        use crate::utils::contracts::AbiManager;
+
+        let calldata = AbiManager::encode_curve_balances_call(coin_index)?;
+        let result = self.call_contract(pool_address, calldata, None).await?;
+        AbiManager::decode_curve_balances_output(&result)
+    }
+
+    /// Get coin address for a specific index in Curve pool
+    pub async fn get_curve_coin(&self, pool_address: H160, coin_index: u64) -> Result<H160> {
+        use crate::utils::contracts::AbiManager;
+
+        let calldata = AbiManager::encode_curve_coins_call(coin_index)?;
+        let result = self.call_contract(pool_address, calldata, None).await?;
+        AbiManager::decode_curve_coins_output(&result)
+    }
+
+    // === Balancer Contract Calls ===
+
+    /// Get pool tokens and balances from Balancer Vault
+    pub async fn get_balancer_pool_tokens(&self, vault_address: H160, pool_id: [u8; 32]) -> Result<crate::utils::contracts::BalancerPoolTokens> {
+        use crate::utils::contracts::AbiManager;
+
+        let calldata = AbiManager::encode_balancer_pool_tokens_call(pool_id)?;
+        let result = self.call_contract(vault_address, calldata, None).await?;
+        AbiManager::decode_balancer_pool_tokens_output(&result)
+    }
+
+    // === Aave V3 Contract Calls ===
+
+    /// Get reserve data from Aave V3 pool
+    pub async fn get_aave_reserve_data(&self, pool_address: H160, asset: H160) -> Result<crate::utils::contracts::AaveReserveData> {
+        use crate::utils::contracts::AbiManager;
+
+        let calldata = AbiManager::encode_aave_reserve_data_call(asset)?;
+        let result = self.call_contract(pool_address, calldata, None).await?;
+        AbiManager::decode_aave_reserve_data_output(&result)
+    }
+
+    // === ERC20 Contract Calls ===
+
+    /// Get ERC20 token decimals
+    pub async fn get_erc20_decimals(&self, token_address: H160) -> Result<u8> {
+        use crate::utils::contracts::AbiManager;
+
+        let calldata = AbiManager::encode_erc20_decimals_call()?;
+        let result = self.call_contract(token_address, calldata, None).await?;
+        AbiManager::decode_erc20_decimals_output(&result)
+    }
+
+    /// Get ERC20 token symbol
+    pub async fn get_erc20_symbol(&self, token_address: H160) -> Result<String> {
+        use crate::utils::contracts::AbiManager;
+
+        let calldata = AbiManager::encode_erc20_symbol_call()?;
+        let result = self.call_contract(token_address, calldata, None).await?;
+        AbiManager::decode_erc20_symbol_output(&result)
+    }
+
+    /// Get ERC20 token balance
+    pub async fn get_erc20_balance(&self, token_address: H160, owner: H160) -> Result<U256> {
+        use ethers::abi::Token;
+        use crate::utils::contracts::AbiManager;
+
+        let calldata = AbiManager::encode_function_call(
+            &crate::utils::contracts::ERC20_ABI,
+            "balanceOf",
+            &[Token::Address(owner)],
+        )?;
+        let result = self.call_contract(token_address, calldata, None).await?;
+        let tokens = AbiManager::decode_function_output(&crate::utils::contracts::ERC20_ABI, "balanceOf", &result)?;
+
+        match &tokens[0] {
+            Token::Uint(val) => Ok(*val),
+            _ => Err(BetaDataplaneError::internal("Invalid balance type")),
         }
     }
 }

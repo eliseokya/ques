@@ -23,7 +23,7 @@ use qenus_dataplane::{
 use crate::{
     extractors::traits::{BetaFeatureExtractor, ExtractionContext, ExtractorConfig},
     providers::EthereumRpcClient,
-    Chain, Result,
+    Chain, Result, BetaDataplaneError,
 };
 
 /// Curve pool information
@@ -92,29 +92,48 @@ impl CurveExtractor {
     async fn extract_pool_state(&self, pool: &CurvePool, block_number: u64) -> Result<AmmFeature> {
         info!(pool = %pool.address, "Extracting Curve pool state");
 
-        // For now, use simulated data since we need actual contract ABIs
-        // In production, would call get_virtual_price, balances, get_dy, etc.
-        
-        // Simulate pool state
-        let virtual_price = 1.02; // Typically > 1.0 for earning pools
-        let mid_price = match pool.pool_type.as_str() {
-            "stable" => 1.0, // Stablecoins should be close to 1:1
-            "crypto" => {
-                // For tricrypto, approximate price ratios
-                if pool.tokens.len() >= 2 {
-                    30000.0 // USDT per WBTC (roughly)
-                } else {
-                    1.0
-                }
+        let client = self.client.as_ref()
+            .ok_or_else(|| BetaDataplaneError::internal("RPC client not set"))?;
+
+        // Get virtual price
+        let virtual_price = match client.get_curve_virtual_price(pool.address).await {
+            Ok(vp) => {
+                // Virtual price is in 1e18 format
+                vp.as_u128() as f64 / 1e18
             }
-            _ => 1.0,
+            Err(e) => {
+                warn!(pool = %pool.address, error = %e, "Failed to get virtual price, using default");
+                1.0
+            }
         };
 
-        let liquidity = match pool.pool_type.as_str() {
-            "stable" => "3500000000", // ~$3.5B TVL for 3pool
-            "crypto" => "1200000000",  // ~$1.2B TVL for tricrypto
-            _ => "100000000",
-        };
+        // Get balances for all coins
+        let mut total_liquidity = 0.0;
+        let mut balances_map = std::collections::HashMap::new();
+
+        for (idx, symbol) in pool.token_symbols.iter().enumerate() {
+            match client.get_curve_balance(pool.address, idx as u64).await {
+                Ok(balance) => {
+                    let decimals = pool.token_decimals[idx];
+                    let balance_f64 = balance.as_u128() as f64 / 10f64.powi(decimals as i32);
+                    balances_map.insert(symbol.clone(), balance.to_string());
+                    total_liquidity += balance_f64; // Rough approximation
+                }
+                Err(e) => {
+                    warn!(pool = %pool.address, coin = idx, error = %e, "Failed to get balance");
+                    // Use fallback
+                    let fallback = match pool.pool_type.as_str() {
+                        "stable" => "1000000000",
+                        "crypto" => "400000000",
+                        _ => "100000000",
+                    };
+                    balances_map.insert(symbol.clone(), fallback.to_string());
+                }
+            }
+        }
+
+        let mid_price = virtual_price; // For stables, virtual price ≈ price
+        let liquidity = total_liquidity.to_string();
 
         // Build token info
         let token0_info = TokenInfo {
@@ -133,16 +152,8 @@ impl CurveExtractor {
             token0_info.clone()
         };
 
-        // Build reserves map for all tokens
-        let mut reserves = HashMap::new();
-        for (idx, symbol) in pool.token_symbols.iter().enumerate() {
-            let reserve = match pool.pool_type.as_str() {
-                "stable" => format!("{}", 1_000_000_000 + idx * 100_000_000), // Balanced reserves
-                "crypto" => format!("{}", 400_000_000 + idx * 50_000_000),
-                _ => "100000000".to_string(),
-            };
-            reserves.insert(symbol.clone(), reserve);
-        }
+        // Reserves already populated in balances_map
+        let reserves = balances_map;
 
         // Calculate depth curve
         let depth = self.calculate_depth_curve(mid_price, liquidity.parse::<f64>().unwrap_or(0.0));
