@@ -57,7 +57,7 @@ enabled = true
 [[providers.base]]
 provider_type = "ankr"
 name = "ankr-base-primary"
-http_url = "https://rpc.ankr.com/eth/f110e805f79ecd3b6874b5da27de68011d6be7bce468150a076d531f41b64928"
+http_url = "https://rpc.ankr.com/base/f110e805f79ecd3b6874b5da27de68011d6be7bce468150a076d531f41b64928"
 rate_limit = 200
 timeout_seconds = 30
 max_retries = 3
