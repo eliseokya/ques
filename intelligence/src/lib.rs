@@ -16,12 +16,16 @@ pub mod simulator;
 pub mod decision;
 pub mod intent_builder;
 pub mod feedback;
+pub mod ingestion;
 pub mod error;
 pub mod types;
 pub mod config;
 
 pub use error::{IntelligenceError, Result};
 pub use types::*;
+pub use state::{MarketState, MarketStateStats, AmmState, BridgeState, GasState, FlashLoanState, SequencerState};
+pub use detectors::{TriangleArbDetector, DexArbDetector, DetectorManager};
+pub use ingestion::FeatureIngestionManager;
 
 /// Version of the intelligence layer
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

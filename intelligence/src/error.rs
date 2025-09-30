@@ -41,6 +41,9 @@ pub enum IntelligenceError {
     #[error("State error: {message}")]
     State { message: String },
 
+    #[error("Data ingestion error: {message}")]
+    DataIngestion { message: String },
+
     #[error("Detection error: {message}")]
     Detection { message: String },
 
