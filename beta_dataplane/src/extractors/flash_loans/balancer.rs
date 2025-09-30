@@ -19,7 +19,7 @@ use qenus_dataplane::{
 use crate::{
     extractors::traits::{BetaFeatureExtractor, ExtractionContext, ExtractorConfig},
     providers::EthereumRpcClient,
-    Chain, Result,
+    Chain, Result, BetaDataplaneError,
 };
 
 /// Balancer Vault information
@@ -76,19 +76,22 @@ impl BalancerFlashLoanExtractor {
     async fn extract_vault_liquidity(&self, vault: &BalancerVault, chain: Chain, block_number: u64) -> Result<FlashLoanFeature> {
         info!(vault = %vault.address, "Extracting Balancer flash loan liquidity");
 
-        // Simulate vault liquidity (in production, would query actual vault balances)
-        let available_liquidity = match chain {
-            Chain::Ethereum => 1_200_000_000.0, // ~$1.2B TVL
-            Chain::Arbitrum => 400_000_000.0,   // ~$400M TVL
-            Chain::Optimism => 200_000_000.0,   // ~$200M TVL
-            Chain::Base => 100_000_000.0,       // ~$100M TVL
+        let client = self.client.as_ref()
+            .ok_or_else(|| BetaDataplaneError::internal("RPC client not set"))?;
+
+        // USDC address for flash loan queries
+        let usdc_address: H160 = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48".parse().unwrap();
+
+        // Get USDC balance in the Balancer Vault (this is flash loanable)
+        let available_liquidity_raw = match client.get_erc20_balance(usdc_address, vault.address).await {
+            Ok(balance) => balance.as_u128() as f64 / 1e6, // USDC has 6 decimals
+            Err(e) => {
+                warn!(vault = %vault.address, error = %e, "Failed to get vault USDC balance");
+                return Err(BetaDataplaneError::extractor("balancer_flash_loan", &format!("Failed to get liquidity: {}", e)));
+            }
         };
 
-        // Add block-based variance
-        let variance = (block_number % 50) as f64 / 100.0;
-        let liquidity_adjusted = available_liquidity * (1.0 + variance * 0.08);
-
-        // Balancer flash loan fee is 0% (free!)
+        // Balancer flash loan fee is 0% (free!) - this is a protocol constant
         let fee_bps = 0;
 
         // Asset info (using USDC as primary flash loan asset)
@@ -102,9 +105,9 @@ impl BalancerFlashLoanExtractor {
             provider: "balancer_v2".to_string(),
             provider_address: format!("{:?}", vault.address),
             asset,
-            available_liquidity: liquidity_adjusted.to_string(),
+            available_liquidity: available_liquidity_raw.to_string(),
             fee_bps,
-            max_loan_amount: liquidity_adjusted.to_string(),
+            max_loan_amount: available_liquidity_raw.to_string(),
             is_active: true,
         })
     }

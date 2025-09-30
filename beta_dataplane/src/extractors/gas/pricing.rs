@@ -55,25 +55,9 @@ impl GasPricingExtractor {
         let client = self.client.as_ref()
             .ok_or_else(|| BetaDataplaneError::internal("RPC client not set"))?;
 
-        // Get real gas price info
-        let gas_info = match client.get_gas_price_info().await {
-            Ok(info) => info,
-            Err(e) => {
-                warn!(error = %e, "Failed to get gas price info, using defaults");
-                // Fallback to chain-specific defaults
-                let (base, priority) = match chain {
-                    Chain::Ethereum => (25.0, 2.0),
-                    Chain::Arbitrum => (0.1, 0.01),
-                    Chain::Optimism => (0.001, 0.0001),
-                    Chain::Base => (0.001, 0.0001),
-                };
-                crate::providers::ethereum::GasPriceInfo {
-                    gas_price: ethers::types::U256::from((base * 1e9) as u64),
-                    base_fee: Some(ethers::types::U256::from((base * 1e9) as u64)),
-                    priority_fee: Some(ethers::types::U256::from((priority * 1e9) as u64)),
-                }
-            }
-        };
+        // Get REAL gas price info - fail if we can't get it
+        let gas_info = client.get_gas_price_info().await
+            .map_err(|e| BetaDataplaneError::extractor("gas_pricing", &format!("Failed to get gas price info: {}", e)))?;
 
         // Convert from wei to gwei
         let base_fee_adjusted = gas_info.base_fee

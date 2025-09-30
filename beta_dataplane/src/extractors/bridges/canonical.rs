@@ -20,7 +20,7 @@ use qenus_dataplane::{
 use crate::{
     extractors::traits::{BetaFeatureExtractor, ExtractionContext, ExtractorConfig},
     providers::EthereumRpcClient,
-    Chain, Result,
+    Chain, Result, BetaDataplaneError,
 };
 
 /// Canonical bridge information
@@ -85,17 +85,23 @@ impl CanonicalBridgeExtractor {
     async fn extract_bridge_state(&self, bridge: &CanonicalBridge, block_number: u64) -> Result<BridgeFeature> {
         info!(bridge = %bridge.address, "Extracting canonical bridge state");
 
-        // Simulate bridge state (in production, would query actual bridge contracts)
-        let liquidity = match bridge.dest_chain.as_str() {
-            "arbitrum" => 500_000_000.0, // ~$500M TVL
-            "optimism" => 300_000_000.0, // ~$300M TVL
-            "base" => 150_000_000.0,     // ~$150M TVL
-            _ => 100_000_000.0,
-        };
+        let client = self.client.as_ref()
+            .ok_or_else(|| BetaDataplaneError::internal("RPC client not set"))?;
 
-        // Add block-based variance
-        let variance = (block_number % 100) as f64 / 100.0;
-        let liquidity_adjusted = liquidity * (1.0 + variance * 0.05);
+        // Get REAL bridge liquidity by checking ETH/WETH balance
+        let weth_address: H160 = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2".parse().unwrap();
+        
+        let liquidity_raw = match client.get_erc20_balance(weth_address, bridge.address).await {
+            Ok(balance) => {
+                // Convert from wei to human-readable ETH, then to USD (assuming ~$2000/ETH)
+                let eth_amount = balance.as_u128() as f64 / 1e18;
+                eth_amount * 2000.0 // Approximate USD value
+            }
+            Err(e) => {
+                warn!(bridge = %bridge.address, error = %e, "Failed to get bridge balance");
+                return Err(BetaDataplaneError::extractor("canonical_bridge", &format!("Failed to get liquidity: {}", e)));
+            }
+        };
 
         // Settlement time estimates (in seconds)
         let settlement_time = match bridge.dest_chain.as_str() {
@@ -129,7 +135,7 @@ impl CanonicalBridgeExtractor {
             source_chain: bridge.source_chain.parse().unwrap_or(Chain::Ethereum),
             dest_chain: bridge.dest_chain.parse().unwrap_or(Chain::Arbitrum),
             token,
-            liquidity: liquidity_adjusted.to_string(),
+            liquidity: liquidity_raw.to_string(),
             fee_bps,
             settlement_time_estimate: settlement_time,
             is_active,

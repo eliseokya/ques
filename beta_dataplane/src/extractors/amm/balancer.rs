@@ -23,7 +23,7 @@ use qenus_dataplane::{
 use crate::{
     extractors::traits::{BetaFeatureExtractor, ExtractionContext, ExtractorConfig},
     providers::EthereumRpcClient,
-    Chain, Result,
+    Chain, Result, BetaDataplaneError,
 };
 
 /// Balancer pool information
@@ -97,18 +97,44 @@ impl BalancerExtractor {
     async fn extract_pool_state(&self, pool: &BalancerPool, block_number: u64) -> Result<AmmFeature> {
         info!(pool = %pool.address, "Extracting Balancer pool state");
 
-        // Simulate pool state (in production, would call Vault.getPoolTokens, etc.)
-        let (mid_price, liquidity) = match pool.pool_type.as_str() {
-            "weighted" => {
-                // For BAL/WETH 80/20 pool
-                let bal_price_in_eth = 3.5; // BAL is ~3.5 ETH
-                (bal_price_in_eth, "25000000") // ~$25M TVL
-            }
-            "stable" => {
-                (1.0, "150000000") // ~$150M TVL for stablecoin pool
-            }
-            _ => (1.0, "10000000"),
+        let client = self.client.as_ref()
+            .ok_or_else(|| BetaDataplaneError::internal("RPC client not set"))?;
+
+        // Get real pool data from Balancer Vault
+        let vault_address: H160 = "0xBA12222222228d8Ba445958a75a0704d566BF2C8".parse().unwrap();
+        
+        // Convert pool_id string to bytes32
+        let pool_id_bytes = hex::decode(pool.pool_id.trim_start_matches("0x"))
+            .map_err(|e| BetaDataplaneError::internal(format!("Invalid pool ID: {}", e)))?;
+        let mut pool_id: [u8; 32] = [0; 32];
+        pool_id.copy_from_slice(&pool_id_bytes[..32]);
+
+        // Make real contract call to get pool tokens and balances
+        let pool_tokens = client.get_balancer_pool_tokens(vault_address, pool_id).await?;
+
+        // Calculate total liquidity and mid price from real balances
+        let mut total_liquidity_raw = 0u128;
+        for balance in &pool_tokens.balances {
+            total_liquidity_raw += balance.as_u128();
+        }
+
+        // Convert to human-readable (assuming 18 decimals for simplicity)
+        let total_liquidity = total_liquidity_raw as f64 / 1e18;
+        
+        // For weighted pools, calculate price from reserves and weights
+        let mid_price = if pool.tokens.len() >= 2 && pool_tokens.balances.len() >= 2 {
+            let balance0 = pool_tokens.balances[0].as_u128() as f64 / 10f64.powi(pool.token_decimals[0] as i32);
+            let balance1 = pool_tokens.balances[1].as_u128() as f64 / 10f64.powi(pool.token_decimals[1] as i32);
+            let weight0 = pool.weights[0];
+            let weight1 = pool.weights[1];
+            
+            // Price = (balance1/weight1) / (balance0/weight0)
+            (balance1 / weight1) / (balance0 / weight0)
+        } else {
+            1.0
         };
+
+        let liquidity = total_liquidity.to_string();
 
         // Build token info
         let token0_info = TokenInfo {
@@ -127,13 +153,12 @@ impl BalancerExtractor {
             token0_info.clone()
         };
 
-        // Build reserves map
+        // Build reserves map from REAL balances
         let mut reserves = HashMap::new();
         for (idx, symbol) in pool.token_symbols.iter().enumerate() {
-            let weight = pool.weights.get(idx).unwrap_or(&1.0);
-            let total_liquidity: f64 = liquidity.parse().unwrap_or(0.0);
-            let reserve = (total_liquidity * weight).to_string();
-            reserves.insert(symbol.clone(), reserve);
+            if let Some(balance) = pool_tokens.balances.get(idx) {
+                reserves.insert(symbol.clone(), balance.to_string());
+            }
         }
 
         // Calculate depth curve

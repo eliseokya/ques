@@ -19,7 +19,7 @@ use qenus_dataplane::{
 use crate::{
     extractors::traits::{BetaFeatureExtractor, ExtractionContext, ExtractorConfig},
     providers::EthereumRpcClient,
-    Chain, Result,
+    Chain, Result, BetaDataplaneError,
 };
 
 /// Aave V3 pool information
@@ -76,19 +76,26 @@ impl AaveV3FlashLoanExtractor {
     async fn extract_pool_liquidity(&self, pool: &AaveV3Pool, chain: Chain, block_number: u64) -> Result<FlashLoanFeature> {
         info!(pool = %pool.address, "Extracting Aave V3 flash loan liquidity");
 
-        // Simulate flash loan data (in production, would call getReserveData, etc.)
-        let available_liquidity = match chain {
-            Chain::Ethereum => 2_500_000_000.0, // ~$2.5B available
-            Chain::Arbitrum => 800_000_000.0,   // ~$800M available
-            Chain::Optimism => 400_000_000.0,   // ~$400M available
-            Chain::Base => 200_000_000.0,       // ~$200M available
+        let client = self.client.as_ref()
+            .ok_or_else(|| BetaDataplaneError::internal("RPC client not set"))?;
+
+        // USDC address for flash loan queries
+        let usdc_address: H160 = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48".parse().unwrap();
+
+        // Make REAL contract call to get reserve data
+        let reserve_data = client.get_aave_reserve_data(pool.address, usdc_address).await?;
+
+        // Get aToken balance to determine available liquidity
+        let available_liquidity_raw = match client.get_erc20_balance(reserve_data.a_token_address, pool.address).await {
+            Ok(balance) => balance.as_u128() as f64 / 1e6, // USDC has 6 decimals
+            Err(e) => {
+                warn!(error = %e, "Failed to get aToken balance, using liquidity index");
+                // Fallback to using liquidity index as proxy
+                reserve_data.liquidity_index.as_u128() as f64 / 1e9
+            }
         };
 
-        // Add block-based variance
-        let variance = (block_number % 50) as f64 / 100.0;
-        let liquidity_adjusted = available_liquidity * (1.0 + variance * 0.1);
-
-        // Aave V3 flash loan fee is 0.05% (5 bps)
+        // Aave V3 flash loan fee is 0.05% (5 bps) - this is a protocol constant
         let fee_bps = 5;
 
         // Asset info (using USDC as primary flash loan asset)
@@ -102,9 +109,9 @@ impl AaveV3FlashLoanExtractor {
             provider: "aave_v3".to_string(),
             provider_address: format!("{:?}", pool.address),
             asset,
-            available_liquidity: liquidity_adjusted.to_string(),
+            available_liquidity: available_liquidity_raw.to_string(),
             fee_bps,
-            max_loan_amount: liquidity_adjusted.to_string(), // Same as available liquidity
+            max_loan_amount: available_liquidity_raw.to_string(),
             is_active: true,
         })
     }

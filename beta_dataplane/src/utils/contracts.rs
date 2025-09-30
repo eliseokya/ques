@@ -175,6 +175,20 @@ pub static AAVE_V3_POOL_ABI: Lazy<Abi> = Lazy::new(|| {
     .expect("Valid Aave V3 Pool ABI")
 });
 
+/// L1 Bridge ABI (for Arbitrum/Optimism/Base canonical bridges)
+pub static L1_BRIDGE_ABI: Lazy<Abi> = Lazy::new(|| {
+    serde_json::from_value(json!([
+        {
+            "name": "l2TokenBridge",
+            "outputs": [{"type": "address", "name": ""}],
+            "inputs": [],
+            "stateMutability": "view",
+            "type": "function"
+        }
+    ]))
+    .expect("Valid L1 Bridge ABI")
+});
+
 /// Contract registry for known contracts
 pub struct ContractRegistry {
     // Contract addresses and metadata

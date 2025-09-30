@@ -112,24 +112,13 @@ impl CurveExtractor {
         let mut balances_map = std::collections::HashMap::new();
 
         for (idx, symbol) in pool.token_symbols.iter().enumerate() {
-            match client.get_curve_balance(pool.address, idx as u64).await {
-                Ok(balance) => {
-                    let decimals = pool.token_decimals[idx];
-                    let balance_f64 = balance.as_u128() as f64 / 10f64.powi(decimals as i32);
-                    balances_map.insert(symbol.clone(), balance.to_string());
-                    total_liquidity += balance_f64; // Rough approximation
-                }
-                Err(e) => {
-                    warn!(pool = %pool.address, coin = idx, error = %e, "Failed to get balance");
-                    // Use fallback
-                    let fallback = match pool.pool_type.as_str() {
-                        "stable" => "1000000000",
-                        "crypto" => "400000000",
-                        _ => "100000000",
-                    };
-                    balances_map.insert(symbol.clone(), fallback.to_string());
-                }
-            }
+            let balance = client.get_curve_balance(pool.address, idx as u64).await
+                .map_err(|e| BetaDataplaneError::extractor("curve", &format!("Failed to get balance for coin {}: {}", idx, e)))?;
+            
+            let decimals = pool.token_decimals[idx];
+            let balance_f64 = balance.as_u128() as f64 / 10f64.powi(decimals as i32);
+            balances_map.insert(symbol.clone(), balance.to_string());
+            total_liquidity += balance_f64;
         }
 
         let mid_price = virtual_price; // For stables, virtual price ≈ price
