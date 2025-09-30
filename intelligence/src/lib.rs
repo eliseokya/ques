@@ -30,6 +30,7 @@ pub use config::{IntelligenceConfig, DataplaneConnectionConfig, DetectionConfig}
 pub use simulator::TradeSimulator;
 pub use decision::{DecisionEngine, TradeDecision, PositionTracker};
 pub use intent_builder::IntentBuilder;
+pub use feedback::{FeedbackProcessor, ExecutionReceipt, ActualCosts, PredictionError, ModelPerformance, ModelAdjustments};
 
 /// Version of the intelligence layer
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
