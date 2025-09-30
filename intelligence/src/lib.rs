@@ -26,6 +26,7 @@ pub use types::*;
 pub use state::{MarketState, MarketStateStats, AmmState, BridgeState, GasState, FlashLoanState, SequencerState};
 pub use detectors::{TriangleArbDetector, DexArbDetector, DetectorManager};
 pub use ingestion::FeatureIngestionManager;
+pub use config::{IntelligenceConfig, DataplaneConnectionConfig, DetectionConfig};
 
 /// Version of the intelligence layer
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
