@@ -8,7 +8,7 @@ pub mod metrics;
 pub mod alerts;
 pub mod dashboard;
 
-// Re-export commonly used types (TODO: Implement in Phase 6)
-// pub use health::{HealthChecker, ComponentHealth, SystemHealth};
-// pub use metrics::{MetricsCollector, SystemMetrics};
-// pub use alerts::{AlertManager, AlertRule, AlertSeverity};
+pub use health::{HealthChecker, HealthReport, HealthStatus, ComponentHealth};
+pub use metrics::{MetricsRegistry, MetricsCollector, Metric, MetricValue, MetricsSummary};
+pub use alerts::{AlertManager, Alert, AlertRule, AlertSeverity, AlertState, ComparisonOperator, AlertStats};
+pub use dashboard::{MonitoringDashboard, MonitoringService, HealthCheckResponse, DashboardOverview};
