@@ -1,0 +1,58 @@
+[package]
+name = "qenus-dataplane"
+version = "0.1.0"
+edition = "2021"
+authors = ["Qenus Team"]
+description = "Real-time blockchain data ingestion and feature extraction"
+license = "MIT"
+
+[dependencies]
+# Workspace dependencies
+tokio = { workspace = true }
+tokio-util = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+reqwest = { workspace = true }
+tungstenite = { workspace = true }
+tokio-tungstenite = { workspace = true }
+ethers = { workspace = true }
+alloy-primitives = { workspace = true }
+alloy-sol-types = { workspace = true }
+# TODO: Re-enable Arrow/Parquet once compatibility issues are resolved
+# arrow = { workspace = true }
+# parquet = { workspace = true }
+rdkafka = { workspace = true }
+sqlx = { workspace = true }
+redis = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+metrics = { workspace = true }
+metrics-exporter-prometheus = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+config = { workspace = true }
+clap = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+url = { workspace = true }
+once_cell = { workspace = true }
+tonic = { workspace = true }
+prost = { workspace = true }
+
+# Additional dataplane-specific dependencies
+futures = "0.3"
+async-trait = "0.1"
+dashmap = "5.5"
+parking_lot = "0.12"
+num_cpus = "1.16"
+
+[build-dependencies]
+tonic-build = { workspace = true }
+
+[[bin]]
+name = "dataplane"
+path = "src/main.rs"
+
+[lib]
+name = "qenus_dataplane"
+path = "src/lib.rs"

@@ -1,0 +1,138 @@
+# Rust
+/target
+**/*.rs.bk
+*.pdb
+
+# Cargo
+Cargo.lock
+
+# Environment and secrets
+.env
+*.env
+**/.env
+**/config/.env
+beta_dataplane/config/.env
+dataplane/config/.env
+
+# API keys and credentials
+**/api_keys.toml
+**/*_api_keys.toml
+**/*.key
+**/*.pem
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Logs
+*.log
+logs/
+*.log.*
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Data and archives
+data/
+archives/
+*.parquet
+*.arrow
+
+# Kafka and streaming
+kafka_data/
+*.offset
+
+# Benchmarks
+criterion/
+flamegraph*.svg
+perf.data
+perf.data.old
+
+# Testing
+coverage/
+*.profraw
+*.profdata
+
+# Documentation
+/target/doc
+book/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.bak
+*.cache
+
+# Mac
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Linux
+*~
+.directory
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Build artifacts
+*.o
+*.so
+*.dylib
+*.dll
+*.a
+*.lib
+*.exe
+
+# Config overrides (keep templates)
+**/config/local.toml
+**/config/production.toml
+**/config/staging.toml
+
+# Node modules (if any JS tooling)
+node_modules/
+package-lock.json
+yarn.lock
+
+# Python (if any Python tooling)
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+venv/
+env/
+
+# Blockchain data (if running full nodes)
+**/blockchain_data/
+**/chain_data/
+**/.ethereum/
+**/.arbitrum/
+**/.optimism/
+**/.base/
+
+# Performance profiling
+*.trace
+*.prof
+*.pb.gz
+
+# Metrics and monitoring
+prometheus_data/
+grafana_data/
+
+# Backup files
+*.backup
+backup/
+
+# Chain snapshots
+*.snapshot
+snapshots/

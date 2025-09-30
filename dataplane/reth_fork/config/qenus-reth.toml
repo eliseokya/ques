@@ -1,0 +1,102 @@
+# Qenus Reth Configuration
+# Lean Ethereum L1 client optimized for real-time feature extraction
+
+[node]
+data_dir = "./data/qenus-reth"
+chain = "mainnet"
+identity = "qenus-reth"
+max_peers = 50
+discovery = true
+
+[node.http_rpc]
+addr = "127.0.0.1"
+port = 8545
+modules = ["eth", "debug"]
+
+[database]
+path = "./data/qenus-reth/db"
+max_size_gb = 500
+cache_size_mb = 2048
+threads = 4
+compression = true
+
+[network]
+listen_addr = "0.0.0.0"
+port = 30303
+boot_nodes = [
+    "enode://d860a01f9722d78051619d1e2351aba3f43f943f6f00718d1b9baa4101932a1f5011f16bb2b1bb35db20d6fe28fa0bf09636d26a87d31de9ec6203eeedb1f666@18.138.108.67:30303",
+    "enode://22a8232c3abc76a16ae9d6c3b164f98775fe226f0917b0ca871128a74a8e9630b458460865bab457221f1d448dd9791d24c4e5d88786180ac185df813a68d4de@3.209.45.79:30303"
+]
+trusted_peers = []
+max_connections = 50
+connection_timeout_seconds = 30
+
+[sync]
+mode = "full"
+max_parallel_downloads = 10
+download_timeout_seconds = 60
+checkpoint_sync = true
+checkpoint_url = "https://mainnet-checkpoint-sync.stakely.io"
+
+[extraction]
+enabled = true
+batch_size = 100
+timeout_seconds = 30
+
+[extraction.amm]
+enabled = true
+uniswap_v3_factory = "0x1F98431c8aD98523631AE4a59f267346ea31F984"
+curve_registry = "0x90E00ACe148ca3b23Ac1bC8C240C2a7Dd9c2d7f5"
+balancer_vault = "0xBA12222222228d8Ba445958a75a0704d566BF2C8"
+min_liquidity_usd = 10000.0
+
+[extraction.bridge]
+enabled = true
+canonical_bridges = [
+    "0x4Dbd4fc535Ac27206064B68FfCf827b0A60BAB3f",  # Arbitrum Bridge
+    "0x99C9fc46f92E8a1c0deC1b1747d010903E884bE1"   # Optimism Bridge
+]
+third_party_bridges = []
+min_liquidity_usd = 100000.0
+
+[extraction.gas]
+enabled = true
+calculation_window = 20
+percentiles = [0.1, 0.25, 0.5, 0.75, 0.9]
+
+[extraction.flash_loan]
+enabled = true
+aave_v3_pools = [
+    "0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2"  # Aave V3 Pool
+]
+balancer_vault = "0xBA12222222228d8Ba445958a75a0704d566BF2C8"
+min_liquidity_usd = 1000000.0
+
+[feeds.kafka]
+enabled = true
+bootstrap_servers = ["localhost:9092"]
+topic_prefix = "qenus.ethereum"
+batch_size = 100
+batch_timeout_ms = 1000
+
+[feeds.grpc]
+enabled = true
+bind_addr = "0.0.0.0"
+port = 50052
+timeout_seconds = 30
+
+[feeds.archive]
+enabled = true
+archive_dir = "./data/qenus-reth/archive"
+compression = "zstd"
+rotation_hours = 1
+
+[observability]
+log_level = "info"
+metrics_addr = "0.0.0.0"
+metrics_port = 9091
+
+[observability.tracing]
+enabled = false
+endpoint = ""
+service_name = "qenus-reth"

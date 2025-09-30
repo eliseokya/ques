@@ -1,0 +1,241 @@
+# Qenus Beta Dataplane Configuration
+# Production-ready RPC-based dataplane for immediate revenue generation
+
+[global]
+mode = "development"  # development, testing, production, dry-run
+log_level = "info"
+worker_threads = 8
+max_memory_mb = 2048
+shutdown_timeout_seconds = 30
+health_check_interval_seconds = 30
+dry_run = false
+
+[providers]
+selection_strategy = "fastest_first"  # fastest_first, round_robin, weighted, primary_fallback
+
+[providers.global_settings]
+default_timeout_seconds = 30
+default_max_retries = 3
+connection_pool_size = 10
+health_check_interval_seconds = 60
+failover_threshold = 5
+
+# Ethereum Providers
+[[providers.ethereum]]
+provider_type = "ankr"
+name = "ankr-ethereum-primary"
+http_url = "https://rpc.ankr.com/eth/f110e805f79ecd3b6874b5da27de68011d6be7bce468150a076d531f41b64928"
+rate_limit = 200
+timeout_seconds = 30
+max_retries = 3
+weight = 1.0
+enabled = true
+
+# Arbitrum Providers
+[[providers.arbitrum]]
+provider_type = "ankr"
+name = "ankr-arbitrum-primary"
+http_url = "https://rpc.ankr.com/arbitrum/f110e805f79ecd3b6874b5da27de68011d6be7bce468150a076d531f41b64928"
+rate_limit = 200
+timeout_seconds = 30
+max_retries = 3
+weight = 1.0
+enabled = true
+
+# Optimism Providers
+[[providers.optimism]]
+provider_type = "ankr"
+name = "ankr-optimism-primary"
+http_url = "https://rpc.ankr.com/optimism/f110e805f79ecd3b6874b5da27de68011d6be7bce468150a076d531f41b64928"
+rate_limit = 200
+timeout_seconds = 30
+max_retries = 3
+weight = 1.0
+enabled = true
+
+# Base Providers
+[[providers.base]]
+provider_type = "ankr"
+name = "ankr-base-primary"
+http_url = "https://rpc.ankr.com/eth/f110e805f79ecd3b6874b5da27de68011d6be7bce468150a076d531f41b64928"
+rate_limit = 200
+timeout_seconds = 30
+max_retries = 3
+weight = 1.0
+enabled = true
+
+# Chain Configurations
+[chains.ethereum]
+enabled = true
+confirmations = 1
+max_block_lag = 10
+
+[chains.ethereum.contracts]
+dex_factories = [
+    "0x1F98431c8aD98523631AE4a59f267346ea31F984",  # Uniswap V3 Factory
+    "0x90E00ACe148ca3b23Ac1bC8C240C2a7Dd9c2d7f5"   # Curve Registry
+]
+dex_routers = [
+    "0xE592427A0AEce92De3Edee1F18E0157C05861564"   # Uniswap V3 Router
+]
+bridges = [
+    "0x4Dbd4fc535Ac27206064B68FfCf827b0A60BAB3f",  # Arbitrum Bridge
+    "0x99C9fc46f92E8a1c0deC1b1747d010903E884bE1"   # Optimism Bridge
+]
+flash_loan_providers = [
+    "0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2",  # Aave V3 Pool
+    "0xBA12222222228d8Ba445958a75a0704d566BF2C8"   # Balancer Vault
+]
+tokens = [
+    "0xA0b86a33E6417c8f2B4B2B4B2B4B2B4B2B4B2B4B",  # USDC
+    "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",  # WETH
+    "0xdAC17F958D2ee523a2206206994597C13D831ec7"   # USDT
+]
+custom = []
+
+[chains.ethereum.features]
+amm_monitoring = true
+bridge_monitoring = true
+gas_monitoring = true
+flash_loan_monitoring = true
+sequencer_monitoring = false
+
+[chains.ethereum.optimization]
+cache_ttl_seconds = 60
+batch_size = 50
+parallelism = 4
+predictive_fetching = true
+
+# Similar configurations for other chains...
+[chains.arbitrum]
+enabled = true
+confirmations = 1
+max_block_lag = 20
+
+[chains.arbitrum.features]
+amm_monitoring = true
+bridge_monitoring = true
+gas_monitoring = true
+flash_loan_monitoring = true
+sequencer_monitoring = true
+
+[chains.optimism]
+enabled = true
+confirmations = 1
+max_block_lag = 20
+
+[chains.optimism.features]
+amm_monitoring = true
+bridge_monitoring = true
+gas_monitoring = true
+flash_loan_monitoring = true
+sequencer_monitoring = true
+
+[chains.base]
+enabled = true
+confirmations = 1
+max_block_lag = 20
+
+[chains.base.features]
+amm_monitoring = true
+bridge_monitoring = true
+gas_monitoring = true
+flash_loan_monitoring = true
+sequencer_monitoring = true
+
+# Feature Extraction Configuration
+[extraction]
+enabled = true
+batch_size = 100
+timeout_seconds = 30
+
+[extraction.amm]
+enabled = true
+min_liquidity_usd = 10000.0
+update_frequency_seconds = 1
+depth_sizes = [100000, 1000000, 10000000]
+price_impact_threshold = 0.05
+
+[extraction.bridge]
+enabled = true
+min_liquidity_usd = 100000.0
+update_frequency_seconds = 5
+max_fee_bps = 1000
+
+[extraction.gas]
+enabled = true
+calculation_window = 20
+percentiles = [0.1, 0.25, 0.5, 0.75, 0.9]
+update_frequency_seconds = 1
+
+[extraction.flash_loan]
+enabled = true
+min_liquidity_usd = 1000000.0
+update_frequency_seconds = 5
+max_fee_bps = 100
+
+# Data Feeds Configuration
+[feeds.kafka]
+enabled = true
+bootstrap_servers = ["localhost:9092"]
+topic_prefix = "qenus.beta"
+
+[feeds.kafka.producer]
+batch_size = 100
+linger_ms = 5
+compression_type = "snappy"
+acks = "all"
+
+[feeds.grpc]
+enabled = true
+bind_address = "0.0.0.0"
+port = 50053
+request_timeout_seconds = 30
+
+[feeds.parquet]
+enabled = true
+output_dir = "./data/beta-dataplane/parquet"
+rotation_interval_hours = 1
+compression = "snappy"
+
+[feeds.redis]
+url = "redis://localhost:6379"
+pool_size = 10
+default_ttl_seconds = 300
+
+# Optimization Configuration
+[optimization.caching]
+enabled = true
+cache_size_mb = 512
+default_ttl_seconds = 60
+target_hit_ratio = 0.8
+
+[optimization.batching]
+enabled = true
+default_batch_size = 50
+batch_timeout_ms = 100
+max_batch_size = 200
+
+[optimization.prediction]
+enabled = true
+prediction_window_seconds = 30
+confidence_threshold = 0.7
+
+# Monitoring Configuration
+[monitoring.health]
+enabled = true
+check_interval_seconds = 30
+timeout_seconds = 5
+bind_address = "0.0.0.0"
+port = 8080
+
+[monitoring.metrics]
+enabled = true
+prometheus_bind_address = "0.0.0.0"
+prometheus_port = 9092
+collection_interval_seconds = 15
+
+[monitoring.alerting]
+enabled = false
+webhook_urls = []
+rate_limit_per_hour = 100

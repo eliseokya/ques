@@ -1,0 +1,72 @@
+# Provider API Key Configuration
+# This file contains sensitive API keys and should be gitignored
+
+[api_keys]
+# Alchemy API Keys
+alchemy_ethereum = "YOUR_ALCHEMY_ETHEREUM_KEY"
+alchemy_arbitrum = "YOUR_ALCHEMY_ARBITRUM_KEY"
+alchemy_optimism = "YOUR_ALCHEMY_OPTIMISM_KEY"
+alchemy_base = "YOUR_ALCHEMY_BASE_KEY"
+
+# Infura API Keys
+infura_ethereum = "YOUR_INFURA_ETHEREUM_KEY"
+infura_arbitrum = "YOUR_INFURA_ARBITRUM_KEY"
+infura_optimism = "YOUR_INFURA_OPTIMISM_KEY"
+
+# QuickNode API Keys
+quicknode_ethereum = "YOUR_QUICKNODE_ETHEREUM_KEY"
+quicknode_arbitrum = "YOUR_QUICKNODE_ARBITRUM_KEY"
+quicknode_optimism = "YOUR_QUICKNODE_OPTIMISM_KEY"
+quicknode_base = "YOUR_QUICKNODE_BASE_KEY"
+
+# Ankr API Keys
+ankr_ethereum = "YOUR_ANKR_ETHEREUM_KEY"
+ankr_arbitrum = "YOUR_ANKR_ARBITRUM_KEY"
+ankr_optimism = "YOUR_ANKR_OPTIMISM_KEY"
+ankr_base = "YOUR_ANKR_BASE_KEY"
+
+# Custom provider API keys
+custom_provider_1 = "YOUR_CUSTOM_KEY_1"
+custom_provider_2 = "YOUR_CUSTOM_KEY_2"
+
+[provider_endpoints]
+# Alchemy endpoints with API key placeholders
+[provider_endpoints.alchemy]
+ethereum_http = "https://eth-mainnet.g.alchemy.com/v2/{api_key}"
+ethereum_ws = "wss://eth-mainnet.g.alchemy.com/v2/{api_key}"
+arbitrum_http = "https://arb-mainnet.g.alchemy.com/v2/{api_key}"
+arbitrum_ws = "wss://arb-mainnet.g.alchemy.com/v2/{api_key}"
+optimism_http = "https://opt-mainnet.g.alchemy.com/v2/{api_key}"
+optimism_ws = "wss://opt-mainnet.g.alchemy.com/v2/{api_key}"
+base_http = "https://base-mainnet.g.alchemy.com/v2/{api_key}"
+base_ws = "wss://base-mainnet.g.alchemy.com/v2/{api_key}"
+
+# Infura endpoints
+[provider_endpoints.infura]
+ethereum_http = "https://mainnet.infura.io/v3/{api_key}"
+ethereum_ws = "wss://mainnet.infura.io/ws/v3/{api_key}"
+arbitrum_http = "https://arbitrum-mainnet.infura.io/v3/{api_key}"
+arbitrum_ws = "wss://arbitrum-mainnet.infura.io/ws/v3/{api_key}"
+optimism_http = "https://optimism-mainnet.infura.io/v3/{api_key}"
+optimism_ws = "wss://optimism-mainnet.infura.io/ws/v3/{api_key}"
+
+# QuickNode endpoints (custom per account)
+[provider_endpoints.quicknode]
+ethereum_http = "https://{endpoint}.ethereum-mainnet.quiknode.pro/{api_key}/"
+ethereum_ws = "wss://{endpoint}.ethereum-mainnet.quiknode.pro/{api_key}/"
+arbitrum_http = "https://{endpoint}.arbitrum-mainnet.quiknode.pro/{api_key}/"
+arbitrum_ws = "wss://{endpoint}.arbitrum-mainnet.quiknode.pro/{api_key}/"
+
+# Ankr endpoints
+[provider_endpoints.ankr]
+ethereum_http = "https://rpc.ankr.com/eth/{api_key}"
+arbitrum_http = "https://rpc.ankr.com/arbitrum/{api_key}"
+optimism_http = "https://rpc.ankr.com/optimism/{api_key}"
+base_http = "https://rpc.ankr.com/base/{api_key}"
+
+# Free endpoints (no API key required)
+[provider_endpoints.free]
+ethereum_http = "https://ethereum.publicnode.com"
+arbitrum_http = "https://arbitrum-one.publicnode.com"
+optimism_http = "https://optimism.publicnode.com"
+base_http = "https://base.publicnode.com"

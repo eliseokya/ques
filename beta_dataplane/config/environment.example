@@ -1,0 +1,51 @@
+# Qenus Beta Dataplane - Environment Variables Example
+# Copy this file to .env and fill in your API keys
+
+# =============================================================================
+# RPC Provider API Keys
+# =============================================================================
+
+# Alchemy (Primary Provider - Recommended)
+# Sign up at: https://www.alchemy.com/
+# Free tier: 300 req/sec, 300M compute units/month
+ALCHEMY_ETHEREUM_KEY=your_alchemy_ethereum_key_here
+ALCHEMY_ARBITRUM_KEY=your_alchemy_arbitrum_key_here
+ALCHEMY_OPTIMISM_KEY=your_alchemy_optimism_key_here
+ALCHEMY_BASE_KEY=your_alchemy_base_key_here
+
+# Infura (Fallback Provider - Recommended)
+# Sign up at: https://infura.io/
+# Free tier: 100,000 requests/day
+INFURA_ETHEREUM_KEY=your_infura_ethereum_key_here
+INFURA_ARBITRUM_KEY=your_infura_arbitrum_key_here
+INFURA_OPTIMISM_KEY=your_infura_optimism_key_here
+
+# QuickNode (Premium Provider - Optional)
+# Sign up at: https://www.quicknode.com/
+# Paid service with higher performance
+QUICKNODE_ETHEREUM_KEY=your_quicknode_ethereum_key_here
+QUICKNODE_ARBITRUM_KEY=your_quicknode_arbitrum_key_here
+QUICKNODE_OPTIMISM_KEY=your_quicknode_optimism_key_here
+QUICKNODE_BASE_KEY=your_quicknode_base_key_here
+
+# Ankr (Alternative Provider - Optional)
+# Sign up at: https://www.ankr.com/
+# Free tier available
+ANKR_ETHEREUM_KEY=your_ankr_ethereum_key_here
+ANKR_ARBITRUM_KEY=your_ankr_arbitrum_key_here
+ANKR_OPTIMISM_KEY=your_ankr_optimism_key_here
+ANKR_BASE_KEY=your_ankr_base_key_here
+
+# =============================================================================
+# Quick Setup Instructions
+# =============================================================================
+
+# 1. Copy this file: cp config/environment.example .env
+# 2. Get API keys from providers (see URLs above)
+# 3. Replace "your_*_key_here" with actual API keys
+# 4. Test: cargo run --bin beta-dataplane -- --test-providers
+# 5. Start: cargo run --bin beta-dataplane -- --mode development
+
+# Minimum required for testing:
+# - ALCHEMY_ETHEREUM_KEY (for basic functionality)
+# - INFURA_ETHEREUM_KEY (for redundancy)
