@@ -4,7 +4,14 @@
 
 ## Overview
 
-The Intelligence Layer consumes features from the beta_dataplane and transforms them into executable trade intents. It combines real-time on-chain data with strategy configurations and risk policies to detect, evaluate, and select profitable arbitrage opportunities.
+The Intelligence Layer is the **decision-making brain** that combines:
+1. **Live market data** from `beta_dataplane` (prices, liquidity, gas)
+2. **Strategy configs** from `business` module (what to trade, risk limits)
+
+And produces:
+- **TradeIntent** objects for the Orchestration layer to execute
+
+**Note:** The `dataplane` folder (with reth_fork) is for future optimization with direct client access. Currently NOT used - we use `beta_dataplane` which is fully operational.
 
 ## Architecture
 
@@ -120,21 +127,37 @@ Reconciles predicted vs actual results.
 ## Data Flow
 
 ```
-1. Dataplane → Kafka topic: qenus.beta.features
-                ↓
-2. state.rs consumes and maintains market state
-                ↓
-3. detectors.rs finds candidates (spread opportunities)
-                ↓
-4. simulator.rs evaluates profitability (costs, slippage)
-                ↓
-5. decision.rs applies risk policy, selects best
-                ↓
-6. intent_builder.rs creates TradeIntent
-                ↓
-7. TradeIntent → Orchestration layer (executes)
-                ↓
-8. feedback.rs learns from execution results
+┌──────────────────┐          ┌────────────────┐
+│ beta_dataplane   │          │   business/    │
+│                  │          │                │
+│ • AMM prices     │          │ • Strategies   │
+│ • Gas data       │          │ • Risk limits  │
+│ • Flash loans    │          │ • Asset lists  │
+│ • Bridge fees    │          │ • Policies     │
+└────────┬─────────┘          └────────┬───────┘
+         │ Features                    │ Configs
+         │ (Kafka/gRPC)                │ (YAML files)
+         └────────┬────────────────────┘
+                  ↓
+         ┌─────────────────┐
+         │  Intelligence   │
+         │                 │
+         │ 1. state.rs     │ ← Maintains market state
+         │ 2. detectors.rs │ ← Finds candidates
+         │ 3. simulator.rs │ ← Calculates PnL
+         │ 4. decision.rs  │ ← Applies risk policy
+         │ 5. intent_builder│ ← Creates TradeIntent
+         └────────┬────────┘
+                  │ TradeIntent
+                  ↓
+         ┌─────────────────┐
+         │  Orchestration  │ → Executes on-chain
+         └────────┬────────┘
+                  │ Results
+                  ↓
+         ┌─────────────────┐
+         │ 6. feedback.rs  │ ← Learns from execution
+         └─────────────────┘
 ```
 
 ## Key Types

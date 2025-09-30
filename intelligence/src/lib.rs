@@ -2,6 +2,13 @@
 //!
 //! The brain of the arbitrage system - converts raw on-chain data into
 //! executable trade intents with risk management and profitability analysis.
+//!
+//! ## Inputs:
+//! 1. **beta_dataplane**: Live market data (prices, liquidity, gas, flash loans)
+//! 2. **business**: Strategy configs, risk policies, asset lists
+//!
+//! ## Output:
+//! - **TradeIntent**: Executable trade specifications for Orchestration layer
 
 pub mod state;
 pub mod detectors;
